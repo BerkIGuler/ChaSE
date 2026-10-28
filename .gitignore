@@ -1,0 +1,19 @@
+**/__pycache__/
+**/.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+*.DS_Store
+*.log
+
+# Data, features, predictions and checkpoints stay out of git
+*.npz
+*.npy
+*.pt
+*.h5
+output/
+
+# Internal notes and agent rules
+CLAUDE.md
+plans/
