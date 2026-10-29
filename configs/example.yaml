@@ -2,7 +2,8 @@
 # settings of the paper.
 
 data_dir: ~/data/chase/urban          # <set>_labels.npz and <set>.npy for train, val and test
-features_dir: ~/data/chase/urban/features   # <model>/<readout>/<set>.npy, one row per link
+features_dir: ~/data/chase/urban/features   # [snr<X>/]<model>/<readout>/<set>.npy, one row per link.
+                                            # Extract the features again when the data change.
 out_dir: results/urban                # results, predictions and the report
 
 models:
@@ -11,8 +12,8 @@ models:
   raw_logmag: {raw: logmag}           # log10 |h|^2 of the first OFDM symbol
   raw_t: {raw: complex_t}             # all OFDM symbols, every 4th subcarrier
   raw_logmag_t: {raw: logmag_t}
-  # A model with its readouts, read from features_dir
-  pilotwimae: {readouts: [mean, spatial, temporal]}
+  # A model with its readouts, read from features_dir. scripts/extract_dummy.py writes the features of this one.
+  dummy: {readouts: [mean, spatial]}
 
 min_path_gain_db: null                # the paper uses -150
 mean_power: null                      # null takes the mean power of the train channels

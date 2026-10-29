@@ -1,6 +1,6 @@
 """Probe every quantity of a ChaSE config for its models and readouts.
 
-    python scripts/run_chase.py configs/example.yaml [--models raw pilotwimae] [--readouts mean] [--snr-db 10]
+    python scripts/run_chase.py configs/example.yaml [--models raw dummy] [--readouts mean] [--snr-db 10]
 """
 
 import argparse
