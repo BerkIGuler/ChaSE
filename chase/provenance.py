@@ -1,6 +1,9 @@
-"""The provenance that every result file records. That is the version of ChaSE, its git commit and checksums."""
+"""The provenance that every result file records (the version of ChaSE, its git commit and checksums), and an
+atomic JSON writer for the result files."""
 
 import hashlib
+import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -15,6 +18,13 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 24), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def write_json(path: Path, obj: dict) -> None:
+    """Write obj as JSON atomically, so that a crash never leaves a truncated file."""
+    tmp = path.with_name(path.stem + ".tmp.json")
+    tmp.write_text(json.dumps(obj, indent=1))
+    os.replace(tmp, path)
 
 
 def _git(*args) -> str:
