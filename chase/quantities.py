@@ -33,6 +33,32 @@ ANGLES = ("aod", "zod", "aoa", "zoa")                        # probed as (sin, c
 DELAY_SPREAD_FLOOR_S = 1e-9                                  # added before log10, since one path has zero spread
 
 Target = Tuple[np.ndarray, np.ndarray]
+TARGETS: Dict[str, Callable[[Dict[str, np.ndarray]], Target]] = {
+    "distance": lambda l: _scalar(l["distance_m"], log=True),
+    "path_gain": lambda l: _scalar(l["path_gain_db"]),
+    "k_factor": lambda l: _scalar(l["k_factor_db"]),                   # no NaN (no LoS) or inf (LoS only)
+    "los_share": lambda l: _scalar(l["power_frac_los"]),
+    "diffraction_share": lambda l: _scalar(l["power_frac_diffraction"]),
+    "specular_share": lambda l: _scalar(l["power_frac_specular"]),
+    "refraction_share": lambda l: _scalar(l["power_frac_refraction"]),
+    "dominant_share": lambda l: _scalar(l["dominant_power_fraction"]),
+    "dominant_bounces": lambda l: _scalar(l["dominant_num_bounces"]),
+    "delay_spread": lambda l: _scalar(l["delay_spread_s"], log=True, floor=DELAY_SPREAD_FLOOR_S),
+    "first_delay": lambda l: _scalar(l["first_delay_s"] * 1e6),                           # us
+    "excess_delay": lambda l: _scalar((l["dominant_tau_s"] - l["first_delay_s"]) * 1e6),  # us
+    "aod": lambda l: _departure(l, "azimuth"),
+    "zod": lambda l: _departure(l, "zenith"),
+    "asd": lambda l: _scalar(l["asd_rad"]),
+    "zsd": lambda l: _scalar(l["zsd_rad"]),
+    "doppler": lambda l: _scalar(l["dominant_doppler_hz"]),            # signed
+    "abs_doppler": lambda l: _scalar(np.abs(l["dominant_doppler_hz"])),
+    "max_doppler": lambda l: _scalar(l["max_abs_doppler_hz"]),
+    "speed": lambda l: _scalar(np.linalg.norm(l["rx_velocity"], axis=1)),
+    "aoa": lambda l: _arrival(l, "azimuth"),
+    "zoa": lambda l: _arrival(l, "zenith"),
+    "asa": lambda l: _scalar(l["asa_rad"]),
+    "zsa": lambda l: _scalar(l["zsa_rad"]),
+}
 
 
 def rotation(orientation: np.ndarray) -> np.ndarray:
@@ -75,31 +101,3 @@ def _departure(lab, which):
 def _arrival(lab, which):
     th, ph = local_angles(lab["dominant_theta_r"], lab["dominant_phi_r"], lab["rx_orientation"])
     return _angle(ph if which == "azimuth" else th)
-
-
-TARGETS: Dict[str, Callable[[Dict[str, np.ndarray]], Target]] = {
-    "distance": lambda l: _scalar(l["distance_m"], log=True),
-    "path_gain": lambda l: _scalar(l["path_gain_db"]),
-    "k_factor": lambda l: _scalar(l["k_factor_db"]),                   # no NaN (no LoS) or inf (LoS only)
-    "los_share": lambda l: _scalar(l["power_frac_los"]),
-    "diffraction_share": lambda l: _scalar(l["power_frac_diffraction"]),
-    "specular_share": lambda l: _scalar(l["power_frac_specular"]),
-    "refraction_share": lambda l: _scalar(l["power_frac_refraction"]),
-    "dominant_share": lambda l: _scalar(l["dominant_power_fraction"]),
-    "dominant_bounces": lambda l: _scalar(l["dominant_num_bounces"]),
-    "delay_spread": lambda l: _scalar(l["delay_spread_s"], log=True, floor=DELAY_SPREAD_FLOOR_S),
-    "first_delay": lambda l: _scalar(l["first_delay_s"] * 1e6),                           # us
-    "excess_delay": lambda l: _scalar((l["dominant_tau_s"] - l["first_delay_s"]) * 1e6),  # us
-    "aod": lambda l: _departure(l, "azimuth"),
-    "zod": lambda l: _departure(l, "zenith"),
-    "asd": lambda l: _scalar(l["asd_rad"]),
-    "zsd": lambda l: _scalar(l["zsd_rad"]),
-    "doppler": lambda l: _scalar(l["dominant_doppler_hz"]),            # signed
-    "abs_doppler": lambda l: _scalar(np.abs(l["dominant_doppler_hz"])),
-    "max_doppler": lambda l: _scalar(l["max_abs_doppler_hz"]),
-    "speed": lambda l: _scalar(np.linalg.norm(l["rx_velocity"], axis=1)),
-    "aoa": lambda l: _arrival(l, "azimuth"),
-    "zoa": lambda l: _arrival(l, "zenith"),
-    "asa": lambda l: _scalar(l["asa_rad"]),
-    "zsa": lambda l: _scalar(l["zsa_rad"]),
-}

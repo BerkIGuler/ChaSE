@@ -88,3 +88,10 @@ def test_constant_train_column_is_not_amplified():
     data = (x[0], y[0], x[1], y[1], x[2], y[2])
     assert ridge_probe(*data)["test"] > 0.99 and mlp_probe(data, [16])["test"] > 0.9
     assert P.standardize(x[0], x[2])[1][:, 3].abs().max() < 10
+
+
+def test_features_of_a_small_scale_are_standardized():
+    g = torch.Generator().manual_seed(0)
+    x = torch.randn(1000, 8, generator=g, dtype=torch.float64)
+    y = x[:, :1] + 0.1 * torch.randn(1000, 1, generator=g, dtype=torch.float64)
+    assert ridge_probe(*_split(x * 1e-7, y))["test"] > 0.95

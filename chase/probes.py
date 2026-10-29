@@ -25,7 +25,8 @@ ALPHAS = np.logspace(-2, 6, 17)          # ridge penalties, on standardized feat
 # float64 chunks, so that wide inputs (the 14-symbol raw baselines) fit in memory
 LARGE = 2 * 10 ** 8
 CHUNK_ROWS = 8192
-CONSTANT_SD = 1e-6                       # a feature column with a smaller standard deviation on train is constant
+# A feature column is constant on train if its standard deviation is below CONSTANT_SD times the largest one
+CONSTANT_SD = 1e-6
 WEIGHT_DECAYS = (1e-4, 1e-2)
 MAX_EPOCHS = 100
 PATIENCE = 8
@@ -59,9 +60,10 @@ def _tmv(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 def _scale(xtr: torch.Tensor):
     """Mean and standard deviation of xtr per column. A column that is constant on xtr is only centered, so that its
-    values on the other sets are not multiplied by a huge factor, and a second pass leaves the tensors as they are."""
+    values on the other sets are not multiplied by a huge factor, and a second pass leaves the tensors as they are.
+    The threshold is relative, so that features of any scale are standardized."""
     mu, sd = xtr.mean(0), xtr.std(0)
-    return mu, torch.where(sd < CONSTANT_SD, torch.ones_like(sd), sd)
+    return mu, torch.where(sd <= CONSTANT_SD * sd.max(), torch.ones_like(sd), sd)
 
 
 def standardize(xtr: torch.Tensor, *others: torch.Tensor, inplace: bool = False):
@@ -89,7 +91,8 @@ def shuffled(y: torch.Tensor, seed: int) -> torch.Tensor:
 
 def ridge_probe(xtr, ytr, xva, yva, xte, yte, alphas=ALPHAS, return_pred=False, pooled=False) -> Dict:
     """Ridge with an intercept. The penalty is chosen by the R^2 on (xva, yva). Inputs are float tensors on one
-    device, y [n, k]. Returns the R^2 on test and on val and the penalty. With return_pred, also the test
+    device, y [n, k]. Inputs with more than LARGE values are standardized in place. Returns the R^2 on test and on
+    val and the penalty. With return_pred, also the test
     predictions [n_test, k] (numpy) as "pred_test"."""
     if xtr.numel() > LARGE:                 # float32 features, float64 products in chunks
         xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=True)
@@ -158,7 +161,8 @@ def mlp_probe(data: Tuple, widths: Sequence[int], seed: int = 0, return_pred: bo
               pooled: bool = False) -> Dict:
     """data is (xtr, ytr, xva, yva, xte, yte), tensors on one device, y [n, k]. Returns the R^2 on test and on val and
     the chosen weight decay. With return_pred, also the test predictions in the units of the target as numpy under
-    "pred_test". With pooled, the outputs share one scale, so that the MSE loss weighs them as the pooled R^2 does."""
+    "pred_test". With pooled, the outputs share one scale, so that the MSE loss weighs them as the pooled R^2 does.
+    Inputs with more than LARGE values are standardized in place."""
     xtr, ytr, xva, yva, xte, yte = data
     big = xtr.numel() > LARGE                                      # wide inputs are standardized in place
     xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=big)

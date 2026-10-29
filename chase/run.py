@@ -18,7 +18,8 @@ penalty, the MLP weight decay and stopping epoch). Half B scores each probe for 
 probe in the report, so that the larger choice set of the MLPs does not inflate the score that decides between them
 and the ridge probe.
 
-A run resumes. It skips the quantities that a result file of the same settings and features already holds.
+A run resumes. It skips the quantities that a result file of the same settings and features already holds. A
+resume with another config or code records them under "resumed_with".
 """
 
 import json
@@ -177,6 +178,10 @@ def probe_quantity(q, x, labels, covered, half_b, cfg, dev):
     xa, ya = pick("val", va_a)
     xb, yb = pick("val", va_b)
     xt, yt = pick("test", te)
+    for part, y in (("train", ytr), ("validation half A", ya), ("validation half B", yb), ("test", yt)):
+        if len(y) < 2 or not bool((y != y[0]).any()):
+            raise ValueError(f"{q} does not vary on the {part} links ({len(y)} links), so no R^2 is defined. "
+                             "Remove it from 'quantities' in the config.")
     xbt, ybt = torch.cat([xb, xt]), torch.cat([yb, yt])   # scored together, split below
     nb = len(va_b)
     pooled = score_of(q) == "pooled"
@@ -249,8 +254,10 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
                               "created": datetime.now().isoformat(timespec="seconds"), "targets": {}}, {}
             else:
                 res, preds = old
-                if res["code"] != state and state not in res.get("resumed_with", []):
-                    res.setdefault("resumed_with", []).append(state)
+                resume = {"code": state, "config": cfg, "config_file": config_file}
+                first = {k: res[k] for k in resume}
+                if resume != first and resume not in res.get("resumed_with", []):
+                    res.setdefault("resumed_with", []).append(resume)
             todo = [q for q in cfg["quantities"] if q not in res["targets"]]
             if not todo:
                 print(f"{name}/{readout}: complete, skipped", flush=True)
@@ -259,6 +266,8 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
             for s in SETS:
                 if len(x[s]) != len(covered[s]):
                     raise ValueError(f"{name}/{readout}/{s}: {len(x[s])} rows, the labels have {len(covered[s])}")
+                if not bool(torch.isfinite(x[s]).all()):
+                    raise ValueError(f"{name}/{readout}/{s}: the features have NaN or inf values")
             if x["train"].numel() <= LARGE:
                 x = {s: v.to(dev) for s, v in x.items()}
             for q in todo:

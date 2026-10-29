@@ -96,3 +96,34 @@ def test_config_checks(tmp_path):
     path.write_text(yaml.safe_dump({"data_dir": "d", "out_dir": "o", "models": {}, "quantities": ["heading"]}))
     with pytest.raises(ValueError, match="not ChaSE quantities"):
         load_config(path)
+
+
+def test_errors_for_a_constant_quantity_and_bad_features(config, tmp_path):
+    cfg = load_config(config)
+    cfg["models"] = {"toy": cfg["models"]["toy"]}
+    cfg["quantities"] = ["dominant_bounces"]
+    data = tmp_path / "data"
+    lab = dict(np.load(data / "test_labels.npz"))
+    lab["dominant_num_bounces"][:] = 1.0                        # constant on the test links
+    np.savez(data / "test_labels.npz", **lab)
+    with pytest.raises(ValueError, match="does not vary on the test links"):
+        run(cfg, device="cpu")
+    f = tmp_path / "features" / "toy" / "mean" / "val.npy"
+    x = np.load(f)
+    x[0, 0] = np.nan
+    np.save(f, x)
+    with pytest.raises(ValueError, match="NaN or inf"):
+        run(cfg, device="cpu")
+
+
+def test_resume_records_another_config(config):
+    cfg = load_config(config)
+    cfg["models"] = {"toy": cfg["models"]["toy"]}
+    cfg["quantities"] = ["path_gain"]
+    run(cfg, device="cpu")
+    cfg["quantities"] = ["path_gain", "distance"]
+    run(cfg, device="cpu")
+    res = json.loads((R.output_dir(cfg) / "toy" / "mean.json").read_text())
+    assert list(res["targets"]) == ["path_gain", "distance"]
+    assert res["config"]["quantities"] == ["path_gain"]
+    assert [r["config"]["quantities"] for r in res["resumed_with"]] == [["path_gain", "distance"]]
