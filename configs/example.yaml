@@ -1,0 +1,32 @@
+# Example ChaSE config. The keys after "models" are optional. Their values here are the defaults, which are the
+# settings of the paper.
+
+data_dir: ~/data/chase/urban          # <set>_labels.npz and <set>.npy for train, val and test
+features_dir: ~/data/chase/urban/features   # <model>/<readout>/<set>.npy, one row per link
+out_dir: results/urban                # results, predictions and the report
+
+models:
+  # The raw-channel baselines, computed from the channels
+  raw: {raw: complex}                 # real and imaginary parts of the first OFDM symbol
+  raw_logmag: {raw: logmag}           # log10 |h|^2 of the first OFDM symbol
+  raw_t: {raw: complex_t}             # all OFDM symbols, every 4th subcarrier
+  raw_logmag_t: {raw: logmag_t}
+  # A model with its readouts, read from features_dir
+  pilotwimae: {readouts: [mean, spatial, temporal]}
+
+min_path_gain_db: null                # the paper uses -150
+mean_power: null                      # null takes the mean power of the train channels
+quantities: null                      # null probes all 24
+levels:                               # MLP probes, name and hidden widths
+  mlp64: [64]
+  mlp256: [256]
+  mlp256x2: [256, 256]
+seeds: [0, 1, 2]                      # MLP seeds
+control_seed: 0
+controls: true                        # shuffled-target controls
+val_split_seed: 0                     # the two validation halves
+
+report:
+  raw_baselines: [raw, raw_logmag, raw_t, raw_logmag_t]   # the raw channel is chosen among these per quantity
+  n_boot: 1000
+  boot_seed: 0
