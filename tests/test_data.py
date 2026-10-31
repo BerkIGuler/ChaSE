@@ -12,19 +12,26 @@ CFR = {"carrier_frequency": 3.5e9, "num_subcarriers": 8, "num_ofdm_symbols": 3, 
 STATS = ("path_gain_db", "delay_spread_s")
 
 
-def _csigen_file(path, n, rng, tx_idx):
-    """A CSIGen-like channel_tx file with n channels of 0 to 4 paths, 4 TX antennas and the saved h."""
+ARRAY = {"num_rows": 1, "num_cols": 4, "num_ant": 4, "antenna_index": "c * num_rows + r"}
+
+
+def _csigen_file(path, n, rng, tx_idx, users=1, bs_array=ARRAY):
+    """A CSIGen-like channel_tx file with n channels of 0 to 4 paths, 4 TX antennas, the given number of RX antennas
+    and the saved h."""
     counts = rng.integers(0, 5, n)
     offsets = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
     p = int(offsets[-1])
     paths = {"paths_offsets": offsets,
-             "paths_a": ((rng.normal(size=(p, 1, 4)) + 1j * rng.normal(size=(p, 1, 4))) * 1e-5).astype(np.complex64),
+             "paths_a": ((rng.normal(size=(p, users, 4)) + 1j * rng.normal(size=(p, users, 4))) * 1e-5
+                         ).astype(np.complex64),
              "paths_tau": rng.uniform(1e-7, 2e-6, p).astype(np.float32),
              "paths_doppler": rng.uniform(-500, 500, p).astype(np.float32)}
     h = cfr_from_paths(paths, **CFR)
     meta = {"num_valid_channels": n, "los_binary": rng.integers(0, 2, n), "rx_positions": rng.normal(size=(n, 3)),
             "rx_velocities": rng.normal(size=(n, 3)), "rx_orientations": rng.normal(size=(n, 3)),
             "tx_orientation": rng.normal(size=3), "tx_idx": tx_idx, "cfr_params": CFR,
+            "tx_array": bs_array,
+            "rx_array": {"num_rows": 1, "num_cols": users, "num_ant": users, "antenna_index": "c * num_rows + r"},
             "path_stats_fields": list(STATS), "path_stats": {k: rng.normal(size=n) for k in STATS}}
     np.savez(path, h=h, metadata=np.array(meta, dtype=object), **paths)
     return h, meta
@@ -70,14 +77,15 @@ def test_build_cell(tmp_path):
     (part_dir / "manifest.yaml").write_text(yaml.safe_dump({"statistics": {"mean_power": 1e-10}}))
     m = build_cell(runs, part_dir, out)
     assert m["statistics"] == {"mean_power": 1e-10} and list(m["runs"]) == ["a_1", "b_1"]
+    assert m["arrays"]["base_station"] == ARRAY and m["arrays"]["user"]["num_cols"] == 1
     for i, s in enumerate(("train", "val", "test")):
         sel = np.flatnonzero((part == i) & own)
         h, lab = np.load(out / f"{s}.npy"), dict(np.load(out / f"{s}_labels.npz"))
-        assert m["counts"][s] == len(sel) == len(h) and h.shape[1:] == (3, 4, 8)
+        assert m["counts"][s] == len(sel) == len(h) and h.shape[1:] == (3, 1, 4, 8)
         assert np.array_equal(lab["user"], sel) and set(lab) >= {"los_binary", "rx_position", "tx_orientation", *STATS}
         for j, k in enumerate(sel):
             hf, meta = files[(("a_1", "b_1")[city[k]], tx[k])]
-            assert np.array_equal(h[j], hf[row[k], 0, 0].transpose(1, 0, 2))
+            assert np.array_equal(h[j], hf[row[k], :, 0].transpose(2, 0, 1, 3))
             assert lab["path_gain_db"][j] == np.float32(meta["path_stats"]["path_gain_db"][row[k]])
             assert np.array_equal(lab["rx_position"][j], meta["rx_positions"][row[k]].astype(np.float32))
     with pytest.raises(FileExistsError):
@@ -110,3 +118,36 @@ def test_build_checks_the_files(tmp_path):
     np.savez(part_dir / "partition.npz", **z)
     with pytest.raises(ValueError, match="no CSIGen file gave these links"):
         build_cell(runs, part_dir, tmp_path / "out3")
+
+
+def test_build_with_two_user_antennas(tmp_path):
+    rng = np.random.default_rng(3)
+    runs, part_dir = _cell(tmp_path, rng)
+    hf, _ = _csigen_file(runs / "a_1" / "channel_tx_0.npz", 6, rng, 0, users=2)
+    m = build_cell(runs, part_dir, tmp_path / "out")
+    h = np.load(tmp_path / "out" / "train.npy")
+    assert h.shape == (2, 3, 2, 4, 8) and m["arrays"]["user"]["num_cols"] == 2
+    assert np.array_equal(h[1], hf[1, :, 0].transpose(2, 0, 1, 3))
+
+
+def test_build_stops_for_other_arrays(tmp_path):
+    rng = np.random.default_rng(4)
+    runs, part_dir = _cell(tmp_path, rng)
+    z = dict(np.load(part_dir / "partition.npz"))
+    z["tx"] = np.array([0, 0, 0, 1, 1, 1])
+    z["row"] = np.array([0, 1, 2, 0, 1, 2])
+    np.savez(part_dir / "partition.npz", **z)
+    _csigen_file(runs / "a_1" / "channel_tx_1.npz", 6, rng, 1, bs_array={**ARRAY, "num_rows": 2, "num_cols": 2})
+    with pytest.raises(ValueError, match="arrays"):
+        build_cell(runs, part_dir, tmp_path / "out")
+    _csigen_file(runs / "a_1" / "channel_tx_1.npz", 6, rng, 1, users=2)       # another user array
+    with pytest.raises(ValueError, match="arrays"):
+        build_cell(runs, part_dir, tmp_path / "out2")
+
+
+def test_build_stops_for_arrays_that_do_not_fit_the_paths(tmp_path):
+    rng = np.random.default_rng(5)
+    runs, part_dir = _cell(tmp_path, rng)
+    _csigen_file(runs / "a_1" / "channel_tx_0.npz", 6, rng, 0, bs_array={**ARRAY, "num_ant": 8})
+    with pytest.raises(ValueError, match="base-station antennas"):
+        build_cell(runs, part_dir, tmp_path / "out")

@@ -1,9 +1,9 @@
 """Write the feature files of a model from a function that encodes channels.
 
-The user gives a function encode(h). Its input h is a batch of channels [B, T, N, K] complex64 on the CPU, in the
-units of the data. It does the preprocessing, the encoding and the readouts of its model. It returns
-{readout: [B, D] features} as torch tensors or numpy arrays, with at least the readouts of the config.
-The same channel must always give the same features.
+The user gives a function encode(h). Its input h is a batch of channels [B, T, U, N, K] complex64 (OFDM symbols, user
+antennas, base-station antennas, subcarriers) on the CPU, in the units of the data. It does the preprocessing, the
+encoding and the readouts of its model. It returns {readout: [B, D] features} as torch tensors or numpy arrays, with at
+least the readouts of the config. The same channel must always give the same features.
 
 extract() calls encode on the channels of train, val and test in batches of chase.raw.NOISE_BATCH. With an SNR, it
 first adds the same noise that the raw baselines get, so that the lost share compares the model and the raw channel

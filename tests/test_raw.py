@@ -1,12 +1,14 @@
 import numpy as np
+import pytest
 import torch
 
 from chase.raw import NOISE_BATCH, add_noise, channel_batches, mean_power, raw_set
 
 
-def _channels(n=5, seed=0):
+def _channels(n=5, seed=0, users=1):
     g = torch.Generator().manual_seed(seed)
-    return torch.complex(torch.randn(n, 14, 32, 32, generator=g), torch.randn(n, 14, 32, 32, generator=g)) * 1e-6
+    shape = (n, 14, users, 32, 32)
+    return torch.complex(torch.randn(shape, generator=g), torch.randn(shape, generator=g)) * 1e-6
 
 
 def test_raw_complex_and_logmag():
@@ -21,6 +23,12 @@ def test_raw_complex_and_logmag():
     torch.testing.assert_close(torch.from_numpy(f), torch.log10(x.abs().pow(2).flatten(1) + 1e-12))
     assert raw_set(h.numpy(), "complex_t", mp, 0).shape == (5, 2 * 14 * 32 * 8)
     assert raw_set(h.numpy(), "logmag_t", mp, 0).shape == (5, 14 * 32 * 8)
+
+
+def test_raw_with_two_user_antennas():
+    h = _channels(users=2).numpy()
+    assert raw_set(h, "complex", 1.0, 0).shape == (5, 2 * 2 * 32 * 32)
+    assert raw_set(h, "logmag_t", 1.0, 0).shape == (5, 14 * 2 * 32 * 8)
 
 
 def test_add_noise():
@@ -38,3 +46,8 @@ def test_noise_is_fixed_per_set_and_channel():
     c = torch.cat([b for _, b in channel_batches(h, 1, 10.0)])
     assert torch.equal(a, b) and not torch.equal(a, c)
     assert torch.equal(torch.cat([b for _, b in channel_batches(h, 0)]), torch.from_numpy(h))
+
+
+def test_four_axis_channels_are_refused():
+    with pytest.raises(ValueError, match="5 axes"):
+        raw_set(np.zeros((3, 14, 32, 32), np.complex64), "complex", 1.0, 0)

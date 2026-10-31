@@ -4,7 +4,8 @@ each MLP level and seed. The run keeps the test predictions for the report.
 Inputs, in data_dir, for each set (train, val, test)
 - <set>_labels.npz, the labels of the links (chase.quantities lists the fields), with city and rx_position [n, 3]
   for the tiles.
-- <set>.npy, the channels [n, T, N, K] complex64. The raw baselines read them, and chase.extract encodes them.
+- <set>.npy, the channels [n, T, U, N, K] complex64 (OFDM symbols, user antennas, base-station antennas,
+  subcarriers). The raw baselines read them, and chase.extract encodes them.
 
 The representations of a model are in features_dir/<model>/<readout>/<set>.npy (features_dir/snr<X>/... with an
 SNR), one row [D] float per link, in the order of the label files. chase.extract writes them from an encode function,
