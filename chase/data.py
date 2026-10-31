@@ -1,17 +1,20 @@
 """Build the ChaSE sets of an evaluation cell from CSIGen runs and a partition.
 
 Inputs
-- runs_dir/<run>/channel_tx_<i>.npz, CSIGen runs with saved paths and one RX antenna, in the format of CSIGen 0.3.4
-  to 0.3.6 (the ChaSE data set). The channels h may be left out, since chase.cfr rebuilds them from the paths.
+- runs_dir/<run>/channel_tx_<i>.npz, CSIGen runs with saved paths, in the format of CSIGen 0.3.4 to 0.3.6 (the ChaSE
+  data set). The channels h may be left out, since chase.cfr rebuilds them from the paths.
 - partition_dir/partition.npz, with one entry per link of the runs. It gives the run (cities, city), the file (tx),
   the row in the file (row), the user, the part (PARTS) and whether the link goes to the serving site (own_site).
 - partition_dir/manifest.yaml (optional), whose "statistics" (the mean power of the pretraining channels) is copied.
 
 The train, val and test sets are the own-site links of the parts of the same name, in partition order. For each set,
-out_dir gets <set>.npy, the channels [n, T, N, K] (OFDM symbols, antennas, subcarriers) complex64 as CSIGen computed
-them, and <set>_labels.npz. The labels are city, tx, row and user from the partition, and from the metadata of the
-CSIGen file los_binary, rx_position, rx_velocity, rx_orientation, tx_orientation (each [n, 3]) and every path_stats
-field. manifest.yaml is written last, so that it marks a complete build.
+out_dir gets <set>.npy, the channels [n, T, U, N, K] (OFDM symbols, user antennas, base-station antennas, subcarriers)
+complex64 as CSIGen computed them, and <set>_labels.npz. The labels are city, tx, row and user from the partition, and
+from the metadata of the CSIGen file los_binary, rx_position, rx_velocity, rx_orientation, tx_orientation (each [n, 3])
+and every path_stats field. manifest.yaml is written last, so that it marks a complete build. Its "arrays" give the
+layout of the arrays of the base station and the user, as CSIGen records them (num_rows, num_cols, num_polarizations,
+num_ant, spacing, element pattern and polarization). The antenna axes follow their "antenna_index", polarization first,
+then column, then row. An encode function can need this layout for its readouts.
 """
 
 from datetime import datetime
@@ -57,7 +60,7 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     h, lab = {}, {s: {k: p[k][idx[s]] for k in ("city", "tx", "row", "user")} for s in SETS}
     filled = {s: np.zeros(len(idx[s]), bool) for s in SETS}
-    fields = None                                             # the label fields, from the first file
+    fields = arrays = None                                    # the label fields and the arrays, from the first file
     for ci, city in enumerate(cities):
         for tx in np.unique(p["tx"][p["city"] == ci]):
             pick = {s: np.flatnonzero((lab[s]["city"] == ci) & (lab[s]["tx"] == tx)) for s in SETS}
@@ -72,11 +75,20 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
             fields = sorted(fl) if fields is None else fields
             if sorted(fl) != fields:
                 raise ValueError(f"{f}: the label fields {sorted(fl)} differ from those of the first file {fields}")
-            full = load_cfr(f)
-            if full.shape[1] != 1 or len(full) != int(meta["num_valid_channels"]):
-                raise ValueError(f"{f}: {full.shape[1]} RX antennas and {len(full)} channels, ChaSE needs 1 RX "
-                                 f"antenna and {meta['num_valid_channels']} channels")
-            cfr = full[:, 0, 0].transpose(0, 2, 1, 3)               # [n, T, N, K]
+            if "tx_array" not in meta or "rx_array" not in meta:
+                raise ValueError(f"{f}: the metadata have no tx_array or rx_array (CSIGen 0.2.2 or later writes them)")
+            arr = {"base_station": meta["tx_array"], "user": meta["rx_array"]}
+            arrays = arr if arrays is None else arrays
+            if arr != arrays:
+                raise ValueError(f"{f}: the arrays {arr} differ from those of the first file {arrays}")
+            full = load_cfr(f)                                      # [n, U, 1, N, T, K]
+            if len(full) != int(meta["num_valid_channels"]):
+                raise ValueError(f"{f}: {len(full)} channels, the metadata give {meta['num_valid_channels']}")
+            if (full.shape[1], full.shape[3]) != (arr["user"].get("num_ant"), arr["base_station"].get("num_ant")):
+                raise ValueError(f"{f}: the paths have {full.shape[1]} user and {full.shape[3]} base-station "
+                                 f"antennas, the arrays give {arr['user'].get('num_ant')} and "
+                                 f"{arr['base_station'].get('num_ant')}")
+            cfr = full[:, :, 0].transpose(0, 3, 1, 2, 4)            # [n, T, U, N, K]
             for s, pos in pick.items():
                 if not len(pos):
                     continue
@@ -102,7 +114,8 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
     manifest = {
         "sets": {s: f"part {s}, own-site links, in partition order" for s in SETS},
         "counts": {s: int(len(idx[s])) for s in SETS},
-        "channels": "[n, OFDM symbol, TX antenna, subcarrier] complex64, unnormalized",
+        "channels": "[n, OFDM symbol, user antenna, base-station antenna, subcarrier] complex64, unnormalized",
+        "arrays": arrays,
         "partition_sha256": sha256(partition_dir / "partition.npz"),
         "statistics": yaml.safe_load(pm.read_text()).get("statistics") if pm.exists() else None,
         "labels": ["city", "tx", "row", "user", *fields],

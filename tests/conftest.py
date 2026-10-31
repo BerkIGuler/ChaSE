@@ -36,7 +36,7 @@ def config(tmp_path):
         lab = _labels(n, rng)
         np.savez(data / f"{s}_labels.npz", **lab)
         gain = 10 ** (lab["path_gain_db"] / 20)
-        h = (rng.normal(size=(n, 2, 4, 8)) + 1j * rng.normal(size=(n, 2, 4, 8))) * gain[:, None, None, None]
+        h = (rng.normal(size=(n, 2, 1, 4, 8)) + 1j * rng.normal(size=(n, 2, 1, 4, 8))) * gain[:, None, None, None, None]
         np.save(data / f"{s}.npy", h.astype(np.complex64))
         x = np.stack([lab["path_gain_db"], lab["distance_m"] ** 2], 1)        # reads path gain and distance
         np.save(feats / f"{s}.npy", np.concatenate([x, rng.normal(size=(n, 6))], 1).astype(np.float32))

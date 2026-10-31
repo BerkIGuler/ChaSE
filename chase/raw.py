@@ -1,10 +1,10 @@
 """The raw-channel baselines and the noise that ChaSE adds to the channels.
 
-The raw baselines are the reference of the lost share. They take the channels [n, T, N, K] (OFDM symbols, antennas,
-subcarriers), divided by the square root of a mean power, in four variants.
+The raw baselines are the reference of the lost share. They take the channels [n, T, U, N, K] (OFDM symbols, user
+antennas, base-station antennas, subcarriers), divided by the square root of a mean power, in four variants.
 
-- complex. The real and imaginary parts of the first OFDM symbol (2 N K values).
-- logmag. log10 |h|^2 of the first OFDM symbol (N K values).
+- complex. The real and imaginary parts of the first OFDM symbol (2 U N K values).
+- logmag. log10 |h|^2 of the first OFDM symbol (U N K values).
 - complex_t and logmag_t. The same over all OFDM symbols and antennas and every SUBCARRIER_STRIDE-th subcarrier, so
   that the time axis, which motion needs, is kept and the ridge probe stays tractable.
 
@@ -36,8 +36,11 @@ def noise_seed(set_index: int, snr_db: float, start: int) -> int:
 
 
 def channel_batches(channels: np.ndarray, set_index: int, snr_db: float = None):
-    """(start, channels [B, T, N, K]) for every batch of NOISE_BATCH channels, with AWGN at snr_db if it is given.
+    """(start, channels [B, T, U, N, K]) for every batch of NOISE_BATCH channels, with AWGN at snr_db if it is given.
     channels may be a memory map."""
+    if channels.ndim != 5:
+        raise ValueError(f"the channels must be [n, T, U, N, K] (5 axes), not {channels.shape}. Build the sets again "
+                         "with scripts/build_data.py.")
     for i in range(0, len(channels), NOISE_BATCH):
         h = torch.from_numpy(np.array(channels[i:i + NOISE_BATCH]))
         if snr_db is not None:
@@ -54,7 +57,7 @@ def mean_power(channels: np.ndarray) -> float:
 
 
 def raw_features(h: torch.Tensor, variant: str, scale: float) -> torch.Tensor:
-    """Raw-baseline features [B, D] of channels [B, T, N, K]."""
+    """Raw-baseline features [B, D] of channels [B, T, U, N, K]."""
     h = h.to(torch.complex64) * scale
     x = h[..., ::SUBCARRIER_STRIDE] if variant.endswith("_t") else h[:, 0]
     if variant.startswith("logmag"):
