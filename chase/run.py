@@ -44,7 +44,7 @@ SETS = ("train", "val", "test")
 # The settings of the paper. A config overrides any of them.
 DEFAULTS = {
     "features_dir": None,
-    "min_path_gain_db": None,       # probe only the links with at least this path gain (dB), or all with None
+    "min_path_gain_db": -150,       # probe only the links with at least this path gain (dB), or all with None
     "mean_power": None,             # the raw baselines divide the channels by its square root (None, see data_power)
     "quantities": None,             # None probes all 24
     "levels": {"mlp64": [64], "mlp256": [256], "mlp256x2": [256, 256]},
@@ -274,6 +274,9 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
     floor = cfg["min_path_gain_db"]
     covered = {s: np.ones(len(labels[s]["path_gain_db"]), bool) if floor is None
                else labels[s]["path_gain_db"] >= floor for s in SETS}
+    if floor is not None:                              # visible, since the default floor fits the paper's data
+        print(f"coverage floor {floor:g} dB keeps " + ", ".join(f"{s} {int(c.sum())} of {len(c)}"
+                                                                 for s, c in covered.items()) + " links", flush=True)
     half_b = validation_halves(labels["val"], cfg["val_split_seed"])
     settings, state = run_settings(cfg, snr_db), code_state()
     out_dir = output_dir(cfg, snr_db)
