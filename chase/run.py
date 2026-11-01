@@ -45,7 +45,7 @@ SETS = ("train", "val", "test")
 DEFAULTS = {
     "features_dir": None,
     "min_path_gain_db": None,       # probe only the links with at least this path gain (dB), or all with None
-    "mean_power": None,             # the raw baselines divide the channels by its square root, None takes that of train
+    "mean_power": None,             # the raw baselines divide the channels by its square root (None, see data_power)
     "quantities": None,             # None probes all 24
     "levels": {"mlp64": [64], "mlp256": [256], "mlp256x2": [256, 256]},
     "seeds": [0, 1, 2],
@@ -135,6 +135,17 @@ def channel_stats(data_dir: Path) -> dict:
     return {s: {"bytes": st.st_size, "mtime_ns": st.st_mtime_ns} for s, st in stats.items()}
 
 
+def data_power(data_dir: Path):
+    """(mean power, source) for the raw baselines when the config does not set it. It is statistics.mean_power of the
+    manifest.yaml in data_dir (scripts/build_data.py copies it from the partition), else the mean power of the train
+    channels."""
+    m = Path(data_dir) / "manifest.yaml"
+    stats = (yaml.safe_load(m.read_text()) or {}).get("statistics") if m.exists() else None
+    if isinstance(stats, dict) and stats.get("mean_power") is not None:
+        return float(stats["mean_power"]), "data_dir/manifest.yaml"
+    return mean_power(np.load(Path(data_dir) / "train.npy", mmap_mode="r")), "train channels"
+
+
 def check_snr(cfg: dict, name: str, readout: str, snr_db: float = None) -> None:
     """Stop if chase.extract wrote the features of a model and readout at another SNR than snr_db. The SNRs are
     compared as the folder names write them. Features without the source.json of chase.extract are not checked."""
@@ -148,13 +159,14 @@ def check_snr(cfg: dict, name: str, readout: str, snr_db: float = None) -> None:
                          f"{tag(snr_db)}. Extract them again at the SNR of the run.")
 
 
-def _features(cfg: dict, name: str, readout: str, snr_db: float, power: float):
-    """(fingerprint, loader) of the features of one model and readout. The loader gives {set: [n, D] array}."""
+def _features(cfg: dict, name: str, readout: str, snr_db: float, power: tuple):
+    """(fingerprint, loader) of the features of one model and readout. The loader gives {set: [n, D] array}. power is
+    the (mean power, source) of the raw baselines."""
     spec = cfg["models"][name]
     data_dir = Path(cfg["data_dir"]).expanduser()
     if "raw" in spec:
-        fp = {"raw": spec["raw"], "mean_power": power, "channels": channel_stats(data_dir)}
-        return fp, lambda: {s: raw_set(np.load(data_dir / f"{s}.npy", mmap_mode="r"), spec["raw"], power, i, snr_db)
+        fp = {"raw": spec["raw"], "mean_power": power[0], "channels": channel_stats(data_dir)}
+        return fp, lambda: {s: raw_set(np.load(data_dir / f"{s}.npy", mmap_mode="r"), spec["raw"], power[0], i, snr_db)
                             for i, s in enumerate(SETS)}
     d = features_path(cfg, name, readout, snr_db)
     fp = {"files": str(d), "sha256": {s: sha256(d / f"{s}.npy") for s in SETS}}
@@ -264,10 +276,13 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
     for m, r in todo:                                  # every model before any probe
         if "readouts" in cfg["models"][m]:
             check_snr(cfg, m, r, snr_db)
-    power = cfg["mean_power"]
-    if power is None and any("raw" in cfg["models"][m] for m in models or cfg["models"]):
-        power = mean_power(np.load(Path(cfg["data_dir"]).expanduser() / "train.npy", mmap_mode="r"))
-    power = None if power is None else float(power)
+    power = None                                       # (mean power, source) of the raw baselines
+    if any("raw" in cfg["models"][m] for m in models or cfg["models"]):
+        power = ((float(cfg["mean_power"]), "config") if cfg["mean_power"] is not None
+                 else data_power(Path(cfg["data_dir"]).expanduser()))
+        if not np.isfinite(power[0]) or power[0] <= 0:
+            raise ValueError(f"mean power {power[0]} from the {power[1]}, it must be positive and finite")
+        print(f"raw baselines: mean power {power[0]:.6g} from the {power[1]}", flush=True)
     for name in models or cfg["models"]:
         for readout in readouts_of(cfg["models"][name]):
             if readouts and readout not in readouts:
@@ -287,6 +302,8 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
                 first = {k: res[k] for k in resume}
                 if resume != first and resume not in res.get("resumed_with", []):
                     res.setdefault("resumed_with", []).append(resume)
+            if "raw" in cfg["models"][name]:                # where the mean power came from (not in the identity)
+                res["mean_power_source"] = power[1]
             todo = [q for q in cfg["quantities"] if q not in res["targets"]]
             if not todo:
                 print(f"{name}/{readout}: complete, skipped", flush=True)
