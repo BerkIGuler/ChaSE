@@ -151,3 +151,9 @@ def test_wide_path_gives_the_same_scores(config, monkeypatch):
         assert new[q]["linear"]["alpha"] == ref[q]["linear"]["alpha"]
         for lv, m in new[q]["mlp"].items():
             assert abs(m["test_mean"] - ref[q]["mlp"][lv]["test_mean"]) < 1e-3
+
+
+def test_default_coverage_floor(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(yaml.safe_dump({"data_dir": "d", "out_dir": "o", "models": {"raw": {"raw": "complex"}}}))
+    assert load_config(path)["min_path_gain_db"] == -150           # the coverage floor of the paper

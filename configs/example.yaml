@@ -1,5 +1,5 @@
 # Example ChaSE config. The keys after "models" are optional. Their values here are the defaults, which are the
-# settings of the paper.
+# settings of the paper. mean_power depends on the data, so its default reads it from the data.
 
 data_dir: ~/data/chase/urban          # <set>_labels.npz and <set>.npy for train, val and test
 features_dir: ~/data/chase/urban/features   # [snr<X>/]<model>/<readout>/<set>.npy, one row per link.
@@ -15,7 +15,7 @@ models:
   # A model with its readouts, read from features_dir. scripts/extract_dummy.py writes the features of this one.
   dummy: {readouts: [mean, spatial]}
 
-min_path_gain_db: null                # the paper uses -150
+min_path_gain_db: -150                # coverage floor (dB) of the paper, null keeps every link
 mean_power: null                      # null takes data_dir/manifest.yaml, else the train channels
 quantities: null                      # null probes all 24
 levels:                               # MLP probes, name and hidden widths
