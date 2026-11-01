@@ -141,7 +141,7 @@ python scripts/build_data.py chase_data/runs/urban chase_data/partitions/urban d
 
 The builder rebuilds the channels from the paths. It needs only numpy and the CPU, at about 10 to 20 seconds per file. The built urban, suburban and rural sets take about 17 GB, 5.4 GB and 8.2 GB.
 
-**Settings of the paper.** The probe settings of the paper are the defaults of the config. In your config, also set `min_path_gain_db: -150` and `mean_power` to `statistics.mean_power` of the `manifest.yaml` that the builder writes to `data_dir`. The card of the data set lists these values for each cell.
+**Settings of the paper.** The probe settings of the paper are the defaults of the config. In your config, also set `min_path_gain_db: -150`. When the config leaves `mean_power` empty, the raw baselines take the mean power of the paper from the `manifest.yaml` that the builder writes to `data_dir`. Without that manifest, they take the mean power of the train channels. The run prints which one it uses, and the card of the data set lists the values of each cell.
 
 ## Repository layout
 

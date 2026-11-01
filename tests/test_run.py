@@ -1,6 +1,7 @@
 """The run and the report, end to end, on a small synthetic data set."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -101,3 +102,32 @@ def test_model_names_are_plain(tmp_path):
     path.write_text(yaml.safe_dump({"data_dir": "d", "out_dir": "o", "models": {"../m": {"raw": "complex"}}}))
     with pytest.raises(ValueError, match="plain name"):
         load_config(path)
+
+
+def test_mean_power_of_the_raw_baselines(config, monkeypatch):
+    cfg = load_config(config)
+    cfg["models"] = {"raw": cfg["models"]["raw"]}
+    cfg["quantities"] = ["path_gain"]
+    data = Path(cfg["data_dir"])
+    res = lambda: json.loads((R.output_dir(cfg) / "raw" / "raw.json").read_text())  # noqa: E731
+    fp = lambda: {**res()["identity"]["features"], "mean_power_source": res()["mean_power_source"]}  # noqa: E731
+    run(cfg, device="cpu")                                          # no manifest, the train channels
+    assert np.isclose(fp()["mean_power"], R.mean_power(np.load(data / "train.npy")))
+    assert fp()["mean_power_source"] == "train channels"
+    (data / "manifest.yaml").write_text(yaml.safe_dump({"statistics": None}))   # a partition without statistics
+    run(cfg, device="cpu")
+    assert fp()["mean_power_source"] == "train channels"
+    (data / "manifest.yaml").write_text(yaml.safe_dump({"statistics": {"mean_power": 2.5e-9}}))
+    run(cfg, device="cpu")                                          # the manifest of the builder
+    assert fp()["mean_power"] == 2.5e-9 and fp()["mean_power_source"] == "data_dir/manifest.yaml"
+    cfg["mean_power"] = 1e-9
+    run(cfg, device="cpu")                                          # the config wins
+    assert fp()["mean_power"] == 1e-9 and fp()["mean_power_source"] == "config"
+    cfg["mean_power"] = None
+    (data / "manifest.yaml").write_text(yaml.safe_dump({"statistics": {"mean_power": 1e-9}}))
+    monkeypatch.setattr(R, "probe_quantity", lambda *a: (_ for _ in ()).throw(AssertionError("probed again")))
+    run(cfg, device="cpu")                                          # the same value from the manifest resumes
+    monkeypatch.undo()
+    cfg["mean_power"] = 0.0
+    with pytest.raises(ValueError, match="positive and finite"):
+        run(cfg, device="cpu")

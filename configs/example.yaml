@@ -16,7 +16,7 @@ models:
   dummy: {readouts: [mean, spatial]}
 
 min_path_gain_db: null                # the paper uses -150
-mean_power: null                      # null takes the mean power of the train channels
+mean_power: null                      # null takes data_dir/manifest.yaml, else the train channels
 quantities: null                      # null probes all 24
 levels:                               # MLP probes, name and hidden widths
   mlp64: [64]
