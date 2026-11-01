@@ -103,7 +103,7 @@ python scripts/run_chase.py configs/my_eval.yaml                # every model an
 python scripts/run_chase.py configs/my_eval.yaml --snr-db 10    # the features at 10 dB
 ```
 
-With `--snr-db`, the run reads the features from `features_dir/snr<X>`, adds the same noise to the raw baselines, and writes the results to `out_dir/snr<X>`. A stopped run resumes. It skips the quantities that a result of the same settings and features already holds.
+With `--snr-db`, the run reads the features from `features_dir/snr<X>`, adds the same noise to the raw baselines, and writes the results to `out_dir/snr<X>`. It stops if `chase.extract` wrote the features at another SNR. A stopped run resumes. It skips the quantities that a result of the same settings and features already holds.
 
 **5. Report.**
 

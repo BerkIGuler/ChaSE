@@ -2,11 +2,13 @@
 
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+import chase.run as R
 from chase.extract import extract
 from chase.report import write_report
 from chase.run import features_path, load_config, run
@@ -119,3 +121,23 @@ def test_extra_readouts_are_ignored(cfg):
     enc = dummy_encoder()
     extract(lambda h: {**enc(h), "temporal": h.real.flatten(1)}, cfg, "dummy")
     assert not features_path(cfg, "dummy", "temporal").exists()
+
+
+def test_run_stops_for_features_of_another_snr(cfg, monkeypatch):
+    extract(dummy_encoder(), cfg, "dummy")
+    extract(dummy_encoder(), cfg, "dummy", snr_db=20)
+    for r in ("mean", "spatial"):                                       # clean and 20 dB features in other folders
+        shutil.copytree(features_path(cfg, "dummy", r), features_path(cfg, "dummy", r, 10))
+        shutil.copytree(features_path(cfg, "dummy", r, 20), features_path(cfg, "dummy", r, 5))
+    monkeypatch.setattr(R, "probe_quantity", lambda *a: (_ for _ in ()).throw(AssertionError("probed")))
+    with pytest.raises(ValueError, match="at clean, the run is at 10 dB"):
+        run(cfg, models=["raw", "dummy"], snr_db=10, device="cpu")     # stops before raw is probed
+    with pytest.raises(ValueError, match="at 20 dB, the run is at 5 dB"):
+        run(cfg, models=["dummy"], snr_db=5, device="cpu")
+    monkeypatch.undo()
+    cfg["quantities"] = ["path_gain"]
+    extract(dummy_encoder(), cfg, "dummy", snr_db=10)                   # the right features run
+    run(cfg, models=["dummy"], snr_db=10.0000001, device="cpu")        # the folder name is snr10 too
+    for r in ("mean", "spatial"):                                       # features without a source.json run
+        (features_path(cfg, "dummy", r) / "source.json").unlink()
+    run(cfg, models=["dummy"], device="cpu")

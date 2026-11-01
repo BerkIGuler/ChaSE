@@ -9,7 +9,8 @@ Inputs, in data_dir, for each set (train, val, test)
 
 The representations of a model are in features_dir/<model>/<readout>/<set>.npy (features_dir/snr<X>/... with an
 SNR), one row [D] float per link, in the order of the label files. chase.extract writes them from an encode function,
-with a source.json that records how they were made. Extract them again when the data change.
+with a source.json that records how they were made. The run stops if that source.json gives another SNR than the run.
+Extract the features again when the data change.
 
 Outputs, in out_dir (out_dir/snr<X> with an SNR), for each model and readout
 - <model>/<readout>.json, the scores per quantity and probe, the controls, the config and the code state.
@@ -134,6 +135,19 @@ def channel_stats(data_dir: Path) -> dict:
     return {s: {"bytes": st.st_size, "mtime_ns": st.st_mtime_ns} for s, st in stats.items()}
 
 
+def check_snr(cfg: dict, name: str, readout: str, snr_db: float = None) -> None:
+    """Stop if chase.extract wrote the features of a model and readout at another SNR than snr_db. The SNRs are
+    compared as the folder names write them. Features without the source.json of chase.extract are not checked."""
+    d = features_path(cfg, name, readout, snr_db)
+    src = json.loads((d / "source.json").read_text()) if (d / "source.json").exists() else None
+    if not isinstance(src, dict) or "snr_db" not in src:
+        return
+    tag = lambda v: "clean" if v is None else f"{float(v):g} dB"   # noqa: E731
+    if tag(src["snr_db"]) != tag(snr_db):
+        raise ValueError(f"{d}: chase.extract wrote these features at {tag(src['snr_db'])}, the run is at "
+                         f"{tag(snr_db)}. Extract them again at the SNR of the run.")
+
+
 def _features(cfg: dict, name: str, readout: str, snr_db: float, power: float):
     """(fingerprint, loader) of the features of one model and readout. The loader gives {set: [n, D] array}."""
     spec = cfg["models"][name]
@@ -245,6 +259,11 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
     settings, state = run_settings(cfg, snr_db), code_state()
     out_dir = output_dir(cfg, snr_db)
     out_dir.mkdir(parents=True, exist_ok=True)
+    todo = [(m, r) for m in models or cfg["models"] for r in readouts_of(cfg["models"][m])
+            if not readouts or r in readouts]
+    for m, r in todo:                                  # every model before any probe
+        if "readouts" in cfg["models"][m]:
+            check_snr(cfg, m, r, snr_db)
     power = cfg["mean_power"]
     if power is None and any("raw" in cfg["models"][m] for m in models or cfg["models"]):
         power = mean_power(np.load(Path(cfg["data_dir"]).expanduser() / "train.npy", mmap_mode="r"))
