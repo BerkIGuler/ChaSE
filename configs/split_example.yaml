@@ -1,0 +1,14 @@
+# Example split config for scripts/make_partition.py. These are the settings of the paper.
+name: new_cell
+num_sectors: 6                # sectors per site in the CSIGen runs
+held_out_site:                # per run (folder name), the site whose own-site links are the test set.
+                              # Sites count from 0, site s holds channel_tx_<i>.npz with i // num_sectors = s
+  boston_1: 1                 # the order also sets the seed of each run (seed + place in this list)
+  chicago_1: 5
+  nyc_1: 5
+  sf_1: 3
+val:
+  fraction: 0.1               # at least this share of the users of the other sites goes to validation
+  block_m: 50                 # in whole square blocks of this size (m)
+  guard_m: 10                 # users within this distance (m) of a validation user are left out
+  seed: 0
