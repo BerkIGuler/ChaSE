@@ -35,7 +35,7 @@ import torch
 import yaml
 
 from chase.bootstrap import r2_mean, r2_pooled, tiles
-from chase.probes import LARGE, mlp_probe, ridge_probe, shuffled
+from chase.probes import LARGE, mlp_probe, ridge_probe, shuffled, standardize
 from chase.provenance import code_state, sha256, write_json
 from chase.quantities import ANGLES, QUANTITIES, TARGETS
 from chase.raw import mean_power, raw_set
@@ -200,8 +200,7 @@ def _resume(out: Path, pf: Path, identity: dict):
 
 def probe_quantity(q, x, labels, covered, half_b, cfg, dev):
     """(result entry, test predictions) of one quantity, with the ridge probe and every MLP level and seed."""
-    wide = x["train"].numel() > LARGE              # wide inputs stay on the CPU, with one device copy per probe
-    c = (lambda v: v.to(dev, copy=True)) if wide else (lambda v: v)
+    wide = x["train"].numel() > LARGE              # wide inputs stay on the CPU, with one device copy per quantity
     sel = {}
     for s in SETS:
         y, ok = TARGETS[q](labels[s])
@@ -218,8 +217,15 @@ def probe_quantity(q, x, labels, covered, half_b, cfg, dev):
         if len(y) < 2 or not bool((y != y[0]).any()):
             raise ValueError(f"{q} does not vary on the {part} links ({len(y)} links), so no R^2 is defined. "
                              "Remove it from 'quantities' in the config.")
-    xbt, ybt = torch.cat([xb, xt]), torch.cat([yb, yt])   # scored together, split below
+    if wide:                                       # one device copy of the subsets of this quantity
+        xtr, xa, xb, xt = (v.to(dev) for v in (xtr, xa, xb, xt))
+    pre = xtr.numel() > LARGE                      # the probes would standardize these in place, so once here
+    if pre:
+        xtr, xa, xb, xt = standardize(xtr.float(), xa.float(), xb.float(), xt.float(), inplace=True)
     nb = len(va_b)
+    xbt, ybt = torch.cat([xb, xt]), torch.cat([yb, yt])   # scored together, split below
+    xt = xbt[nb:]                                  # a view, so that the test rows are held once
+    del xb
     pooled = score_of(q) == "pooled"
     r2f = r2_pooled if pooled else r2_mean
 
@@ -227,11 +233,11 @@ def probe_quantity(q, x, labels, covered, half_b, cfg, dev):
         return r2f(sel["val"][1][va_b], p[:nb]), r2f(sel["test"][1][te], p[nb:])
 
     seed_c = cfg["control_seed"]
-    lin = ridge_probe(c(xtr), ytr, c(xa), ya, c(xbt), ybt, return_pred=True, pooled=pooled)
+    lin = ridge_probe(xtr, ytr, xa, ya, xbt, ybt, return_pred=True, pooled=pooled, standardized=pre,
+                      ytr_control=shuffled(ytr, seed_c) if cfg["controls"] else None, control_from=nb)
     pl = lin.pop("pred_test")
     lin_val, lin_test = scores(pl)
-    lin_ctl = ridge_probe(c(xtr), shuffled(ytr, seed_c), c(xa), ya, c(xt), yt,
-                          pooled=pooled)["test"] if cfg["controls"] else None
+    lin_ctl = lin.get("control")                   # the control scores the test rows only
     preds = {f"{q}__idx": te, f"{q}__true": sel["test"][1][te].astype(np.float32), f"{q}__linear": pl[nb:]}
     entry = {"r2": score_of(q),
              "n": {"train": int(len(sel["train"][0])), "val_fit": int(len(va_a)), "val_select": int(nb),
@@ -242,15 +248,16 @@ def probe_quantity(q, x, labels, covered, half_b, cfg, dev):
     for lv, widths in cfg["levels"].items():
         runs = {}
         for sd in cfg["seeds"]:
-            r = mlp_probe((c(xtr), ytr, c(xa), ya, c(xbt), ybt), widths, sd, return_pred=True, pooled=pooled)
+            r = mlp_probe((xtr, ytr, xa, ya, xbt, ybt), widths, sd, return_pred=True, pooled=pooled,
+                          standardized=pre)
             p = r.pop("pred_test")
             v, t = scores(p)
             runs[str(sd)] = {"val": v, "test": t, "val_fit": r["val"], "weight_decay": r["weight_decay"]}
             preds[f"{q}__{lv}_s{sd}"] = p[nb:]
         control = None
         if cfg["controls"]:                        # shuffled train and validation targets, first seed
-            ctl = (c(xtr), shuffled(ytr, seed_c), c(xa), shuffled(ya, seed_c + 1), c(xt), yt)
-            control = mlp_probe(ctl, widths, cfg["seeds"][0], pooled=pooled)["test"]
+            ctl = (xtr, shuffled(ytr, seed_c), xa, shuffled(ya, seed_c + 1), xt, yt)
+            control = mlp_probe(ctl, widths, cfg["seeds"][0], pooled=pooled, standardized=pre)["test"]
         entry["mlp"][lv] = {"seeds": runs, "val_mean": float(np.mean([r["val"] for r in runs.values()])),
                             "test_mean": float(np.mean([r["test"] for r in runs.values()])),
                             "control": control}

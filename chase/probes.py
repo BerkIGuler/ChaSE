@@ -89,13 +89,17 @@ def shuffled(y: torch.Tensor, seed: int) -> torch.Tensor:
     return y[torch.randperm(len(y), generator=g).to(y.device)]
 
 
-def ridge_probe(xtr, ytr, xva, yva, xte, yte, alphas=ALPHAS, return_pred=False, pooled=False) -> Dict:
+def ridge_probe(xtr, ytr, xva, yva, xte, yte, alphas=ALPHAS, return_pred=False, pooled=False, ytr_control=None,
+                control_from=0, standardized=False) -> Dict:
     """Ridge with an intercept. The penalty is chosen by the R^2 on (xva, yva). Inputs are float tensors on one
-    device, y [n, k]. Inputs with more than LARGE values are standardized in place. Returns the R^2 on test and on
-    val and the penalty. With return_pred, also the test
-    predictions [n_test, k] (numpy) as "pred_test"."""
+    device, y [n, k]. Inputs with more than LARGE values are standardized in place, unless standardized says that
+    the caller did it already with the statistics of xtr (the flag applies to these wide inputs only). Returns the R^2
+    on test and on val and the penalty. With return_pred, also the test predictions [n_test, k] (numpy) as
+    "pred_test". With ytr_control (shuffled train targets), the control probe reuses the eigendecomposition, and its
+    R^2 on the test rows from control_from on is returned as "control"."""
     if xtr.numel() > LARGE:                 # float32 features, float64 products in chunks
-        xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=True)
+        if not standardized:
+            xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=True)
         mm, tmv = _mm, _tmv
         lam, V = torch.linalg.eigh(_gram(xtr))
     else:
@@ -105,20 +109,26 @@ def ridge_probe(xtr, ytr, xva, yva, xte, yte, alphas=ALPHAS, return_pred=False, 
             x.sub_(mu).div_(sd)
         mm, tmv = (lambda x, w: x @ w), (lambda x, y: x.T @ y)
         lam, V = torch.linalg.eigh(xtr.T @ xtr)
-    y, yva, yte = ytr.double(), yva.double(), yte.double()
-    ym = y.mean(0)
-    b = V.T @ tmv(xtr, y - ym)
-    best = (-np.inf, None, None)
-    for a in alphas:
-        w = V @ (b / (lam + a)[:, None])
-        s = r2(yva, mm(xva, w) + ym, pooled)
-        if s > best[0]:
-            best = (s, float(a), w)
-    s_va, a, w = best
-    pred = mm(xte, w) + ym
+    yva, yte = yva.double(), yte.double()
+
+    def fit(y, x_test):                     # (val R^2, penalty, predictions on x_test) of the best penalty
+        y = y.double()
+        ym = y.mean(0)
+        b = V.T @ tmv(xtr, y - ym)
+        best = (-np.inf, None, None)
+        for a in alphas:
+            w = V @ (b / (lam + a)[:, None])
+            s = r2(yva, mm(xva, w) + ym, pooled)
+            if s > best[0]:
+                best = (s, float(a), w)
+        return best[0], best[1], mm(x_test, best[2]) + ym
+
+    s_va, a, pred = fit(ytr, xte)
     out = {"test": r2(yte, pred, pooled), "val": s_va, "alpha": a}
     if return_pred:
         out["pred_test"] = pred.float().cpu().numpy()
+    if ytr_control is not None:
+        out["control"] = r2(yte[control_from:], fit(ytr_control, xte[control_from:])[2], pooled)
     return out
 
 
@@ -158,14 +168,16 @@ def _train(widths, wd, xtr, ytr, xva, yva, seed, pooled=False):
 
 
 def mlp_probe(data: Tuple, widths: Sequence[int], seed: int = 0, return_pred: bool = False,
-              pooled: bool = False) -> Dict:
+              pooled: bool = False, standardized: bool = False) -> Dict:
     """data is (xtr, ytr, xva, yva, xte, yte), tensors on one device, y [n, k]. Returns the R^2 on test and on val and
     the chosen weight decay. With return_pred, also the test predictions in the units of the target as numpy under
     "pred_test". With pooled, the outputs share one scale, so that the MSE loss weighs them as the pooled R^2 does.
-    Inputs with more than LARGE values are standardized in place."""
+    Inputs with more than LARGE values are standardized in place, unless standardized says that the caller did it
+    already with the statistics of xtr (the flag applies to these wide inputs only)."""
     xtr, ytr, xva, yva, xte, yte = data
     big = xtr.numel() > LARGE                                      # wide inputs are standardized in place
-    xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=big)
+    if not (big and standardized):
+        xtr, xva, xte = standardize(xtr.float(), xva.float(), xte.float(), inplace=big)
     ytr, yva, yte = ytr.float(), yva.float(), yte.float()
     mu, sd = ytr.mean(0), ytr.std(0).clamp_min(1e-8)               # the R^2 does not change
     if pooled:
