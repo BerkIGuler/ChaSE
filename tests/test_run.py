@@ -131,3 +131,23 @@ def test_mean_power_of_the_raw_baselines(config, monkeypatch):
     cfg["mean_power"] = 0.0
     with pytest.raises(ValueError, match="positive and finite"):
         run(cfg, device="cpu")
+
+
+def test_wide_path_gives_the_same_scores(config, monkeypatch):
+    import chase.probes as P
+    cfg = load_config(config)
+    cfg["models"] = {"raw": cfg["models"]["raw"]}
+    cfg["quantities"] = ["path_gain", "aod"]
+    run(cfg, device="cpu")
+    ref = json.loads((R.output_dir(cfg) / "raw" / "raw.json").read_text())["targets"]
+    cfg["out_dir"] = cfg["out_dir"] + "_wide"
+    monkeypatch.setattr(R, "LARGE", 1000)                           # every subset takes the wide path
+    monkeypatch.setattr(P, "LARGE", 1000)
+    run(cfg, device="cpu")
+    new = json.loads((R.output_dir(cfg) / "raw" / "raw.json").read_text())["targets"]
+    for q in cfg["quantities"]:
+        for k in ("val", "test", "control"):
+            assert abs(new[q]["linear"][k] - ref[q]["linear"][k]) < 1e-4
+        assert new[q]["linear"]["alpha"] == ref[q]["linear"]["alpha"]
+        for lv, m in new[q]["mlp"].items():
+            assert abs(m["test_mean"] - ref[q]["mlp"][lv]["test_mean"]) < 1e-3

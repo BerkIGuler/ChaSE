@@ -95,3 +95,30 @@ def test_features_of_a_small_scale_are_standardized():
     x = torch.randn(1000, 8, generator=g, dtype=torch.float64)
     y = x[:, :1] + 0.1 * torch.randn(1000, 1, generator=g, dtype=torch.float64)
     assert ridge_probe(*_split(x * 1e-7, y))["test"] > 0.95
+
+
+def test_control_from_the_same_fit():
+    g = torch.Generator().manual_seed(5)
+    x = torch.randn(1000, 8, generator=g)
+    y = x[:, :2] * 3 + 0.1 * torch.randn(1000, 2, generator=g)
+    xtr, ytr, xva, yva, xte, yte = _split(x, y)
+    ys = shuffled(ytr, 0)
+    both = ridge_probe(xtr, ytr, xva, yva, xte, yte, ytr_control=ys, control_from=50)
+    alone = ridge_probe(xtr, ys, xva, yva, xte[50:], yte[50:])
+    assert both["test"] == ridge_probe(xtr, ytr, xva, yva, xte, yte)["test"]
+    assert abs(both["control"] - alone["test"]) < 1e-12
+
+
+def test_wide_inputs_standardized_once_give_the_same_results(monkeypatch):
+    monkeypatch.setattr(P, "LARGE", 10)
+    g = torch.Generator().manual_seed(6)
+    x = [torch.randn(n, 6, generator=g) * 3 + 1 for n in (500, 100, 100)]
+    y = [xi[:, :1] ** 2 + xi[:, 1:2] for xi in x]
+    old_r = ridge_probe(*sum(([xi.clone(), yi] for xi, yi in zip(x, y)), []), return_pred=True)
+    old_m = mlp_probe(tuple(sum(([xi.clone(), yi] for xi, yi in zip(x, y)), [])), [16], 0, return_pred=True)
+    xs = P.standardize(*[xi.clone() for xi in x], inplace=True)
+    data = tuple(sum(([xi, yi] for xi, yi in zip(xs, y)), []))
+    new_r = ridge_probe(*data, return_pred=True, standardized=True)
+    new_m = mlp_probe(data, [16], 0, return_pred=True, standardized=True)
+    assert np.array_equal(old_r["pred_test"], new_r["pred_test"]) and old_r["alpha"] == new_r["alpha"]
+    assert np.array_equal(old_m["pred_test"], new_m["pred_test"])
