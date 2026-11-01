@@ -5,7 +5,9 @@ Inputs
   data set). The channels h may be left out, since chase.cfr rebuilds them from the paths.
 - partition_dir/partition.npz, with one entry per link of the runs. It gives the run (cities, city), the file (tx),
   the row in the file (row), the user, the part (PARTS) and whether the link goes to the serving site (own_site).
-- partition_dir/manifest.yaml (optional), whose "statistics" (the mean power of the pretraining channels) is copied.
+- partition_dir/manifest.yaml (optional). If its "statistics" give a mean_power (the published partitions do), it is
+  copied. Otherwise the builder computes the mean power over all links of the train part, own-site or not, as the
+  paper did. The run uses this value for the raw baselines.
 
 The train, val and test sets are the own-site links of the parts of the same name, in partition order. For each set,
 out_dir gets <set>.npy, the channels [n, T, U, N, K] (OFDM symbols, user antennas, base-station antennas, subcarriers)
@@ -24,10 +26,9 @@ import numpy as np
 import yaml
 
 from chase.cfr import load_cfr
+from chase.partition import PARTS, TRAIN
 from chase.provenance import code_state, sha256
 from chase.run import SETS
-
-PARTS = ("train", "val", "test", "excluded", "guard")
 
 
 def file_labels(meta: dict) -> dict:
@@ -57,6 +58,10 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
     empty = [s for s in SETS if not len(idx[s])]
     if empty:
         raise ValueError(f"the partition has no own-site links in {empty}")
+    pm = partition_dir / "manifest.yaml"
+    stats = (yaml.safe_load(pm.read_text()) or {}).get("statistics") if pm.exists() else None
+    has_power = isinstance(stats, dict) and stats.get("mean_power") is not None
+    power_sum, power_n = 0.0, 0                               # over all links of the train part
     out_dir.mkdir(parents=True, exist_ok=True)
     h, lab = {}, {s: {k: p[k][idx[s]] for k in ("city", "tx", "row", "user")} for s in SETS}
     filled = {s: np.zeros(len(idx[s]), bool) for s in SETS}
@@ -64,7 +69,8 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
     for ci, city in enumerate(cities):
         for tx in np.unique(p["tx"][p["city"] == ci]):
             pick = {s: np.flatnonzero((lab[s]["city"] == ci) & (lab[s]["tx"] == tx)) for s in SETS}
-            if not any(len(v) for v in pick.values()):
+            train_rows = p["row"][(p["city"] == ci) & (p["tx"] == tx) & (p["part"] == TRAIN)]
+            if not any(len(v) for v in pick.values()) and (has_power or not len(train_rows)):
                 continue
             f = runs_dir / city / f"channel_tx_{tx}.npz"
             with np.load(f, allow_pickle=True) as z:
@@ -89,6 +95,13 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
                                  f"antennas, the arrays give {arr['user'].get('num_ant')} and "
                                  f"{arr['base_station'].get('num_ant')}")
             cfr = full[:, :, 0].transpose(0, 3, 1, 2, 4)            # [n, T, U, N, K]
+            if not has_power and len(train_rows):
+                if train_rows.min() < 0 or train_rows.max() >= len(cfr):
+                    raise ValueError(f"{f}: the partition asks for rows {train_rows.min()} to {train_rows.max()}, "
+                                     f"the file has {len(cfr)}")
+                hp = full[train_rows][:, :, 0].transpose(0, 3, 1, 2, 4)   # the memory order of the sum of the paper
+                power_sum += float(np.sum(np.abs(hp.astype(np.complex128)) ** 2))
+                power_n += hp.size
             for s, pos in pick.items():
                 if not len(pos):
                     continue
@@ -110,14 +123,16 @@ def build_cell(runs_dir: Path, partition_dir: Path, out_dir: Path) -> dict:
     for s in SETS:
         h[s].flush()
         np.savez(out_dir / f"{s}_labels.npz", **lab[s])
-    pm = partition_dir / "manifest.yaml"
+    if not has_power and power_n:                             # without train links, the run falls back to train.npy
+        stats = {**(stats if isinstance(stats, dict) else {}), "mean_power": power_sum / power_n,
+                 "mean_power_links": "all links of the train part"}
     manifest = {
         "sets": {s: f"part {s}, own-site links, in partition order" for s in SETS},
         "counts": {s: int(len(idx[s])) for s in SETS},
         "channels": "[n, OFDM symbol, user antenna, base-station antenna, subcarrier] complex64, unnormalized",
         "arrays": arrays,
         "partition_sha256": sha256(partition_dir / "partition.npz"),
-        "statistics": yaml.safe_load(pm.read_text()).get("statistics") if pm.exists() else None,
+        "statistics": stats,
         "labels": ["city", "tx", "row", "user", *fields],
         "labels_sha256": {s: sha256(out_dir / f"{s}_labels.npz") for s in SETS},
         "runs": {c: {"generation_yaml_sha256": sha256(runs_dir / c / "generation.yaml")
