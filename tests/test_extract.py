@@ -1,4 +1,4 @@
-"""The feature files of an encode function, with the dummy encoder of scripts/extract_dummy.py."""
+"""The feature files of an encode function, with the dummy encoder of examples/extract_dummy.py."""
 
 import importlib.util
 import json
@@ -14,7 +14,7 @@ from chase.extract import extract
 from chase.report import write_report
 from chase.run import features_path, load_config, run
 
-spec = importlib.util.spec_from_file_location("extract_dummy", Path(__file__).parents[1] / "scripts/extract_dummy.py")
+spec = importlib.util.spec_from_file_location("extract_dummy", Path(__file__).parents[1] / "examples/extract_dummy.py")
 extract_dummy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(extract_dummy)
 WIDTH, dummy_encoder = extract_dummy.WIDTH, extract_dummy.dummy_encoder

@@ -1,6 +1,6 @@
 """Write the feature files of a dummy encoder, as an example of how a model enters ChaSE.
 
-    python scripts/extract_dummy.py configs/example.yaml [--model dummy] [--snr-db 10]
+    python examples/extract_dummy.py configs/example.yaml [--model dummy] [--snr-db 10]
 
 The dummy encoder projects the real and imaginary parts of each OFDM symbol and antenna pair with a fixed random matrix.
 That gives one token per symbol and antenna pair. Its readouts are the mean over all tokens ("mean") and the mean over
