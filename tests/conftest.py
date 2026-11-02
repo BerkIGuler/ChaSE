@@ -4,6 +4,8 @@ import numpy as np
 import pytest
 import yaml
 
+from chase.cfr import cfr_from_paths
+
 SIZES = {"train": 300, "val": 160, "test": 200}
 
 
@@ -46,3 +48,48 @@ def config(tmp_path):
     path = tmp_path / "chase.yaml"
     path.write_text(yaml.safe_dump(cfg))
     return path
+
+
+CFR = {"carrier_frequency": 3.5e9, "num_subcarriers": 8, "num_ofdm_symbols": 3, "subcarrier_spacing": 30e3,
+       "normalize_delays": False, "normalize": False}
+ARRAY = {"num_rows": 1, "num_cols": 4, "num_ant": 4}
+PARTITION_SPLIT = {"name": "new_cell", "num_sectors": 1, "held_out_site": {"a_1": 1, "b_1": 0},
+         "val": {"fraction": 0.2, "block_m": 50, "guard_m": 10, "seed": 0}}
+
+
+def _csigen_run(run, rng, n_users=40, n_sites=2):
+    """A CSIGen-like run of n_sites sites with one sector each. Each file holds the links of its site to all users."""
+    run.mkdir(parents=True)
+    pos = np.c_[rng.uniform(0, 300, (n_users, 2)), np.full(n_users, 1.5)]
+    serving = rng.integers(0, n_sites, n_users)
+    for tx in range(n_sites):
+        counts = rng.integers(1, 4, n_users)
+        offsets = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+        p = int(offsets[-1])
+        paths = {"paths_offsets": offsets,
+                 "paths_a": ((rng.normal(size=(p, 1, 4)) + 1j * rng.normal(size=(p, 1, 4))) * 1e-5
+                             ).astype(np.complex64),
+                 "paths_tau": rng.uniform(1e-7, 2e-6, p).astype(np.float32),
+                 "paths_doppler": rng.uniform(-500, 500, p).astype(np.float32)}
+        meta = {"num_valid_channels": n_users, "num_sectors": 1, "tx_idx": tx,
+                "rx_names": [f"UE_{u}" for u in range(n_users)],
+                "rx_positions": pos, "rx_serving_tx": serving, "rx_velocities": rng.normal(size=(n_users, 3)),
+                "rx_orientations": np.zeros((n_users, 3)), "tx_orientation": np.zeros(3),
+                "los_binary": rng.integers(0, 2, n_users), "cfr_params": CFR, "tx_array": ARRAY,
+                "rx_array": {"num_rows": 1, "num_cols": 1, "num_ant": 1},
+                "path_stats_fields": ["path_gain_db"], "path_stats": {"path_gain_db": rng.normal(size=n_users)}}
+        np.savez(run / f"channel_tx_{tx}.npz", h=cfr_from_paths(paths, **CFR), metadata=np.array(meta, dtype=object),
+                 **paths)
+    return pos[:, :2], serving
+
+
+@pytest.fixture
+def csigen_run():
+    """A function that writes a small CSIGen-like run (see _csigen_run)."""
+    return _csigen_run
+
+
+@pytest.fixture
+def split():
+    """The split config of the synthetic runs a_1 and b_1."""
+    return {**PARTITION_SPLIT, "val": dict(PARTITION_SPLIT["val"])}

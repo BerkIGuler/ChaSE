@@ -40,7 +40,7 @@ As a control, ChaSE shuffles the targets of the train links in a random order, s
 ChaSE uses a GPU or a CPU in two steps, and you choose the device of each step separately.
 
 - **Features (step 3 of [Usage](#usage)).** Your `encode` function runs your model, so it chooses the device. Move the channels and the model to the same device in `encode`.
-- **Probes (step 4 of [Usage](#usage)).** `scripts/run_chase.py` trains the probes on the GPU if PyTorch finds one, and on the CPU otherwise. To choose the device yourself, use `--device`, for example `--device cpu` or `--device cuda:1`.
+- **Probes (step 4 of [Usage](#usage)).** `chase-run` trains the probes on the GPU if PyTorch finds one, and on the CPU otherwise. To choose the device yourself, use `--device`, for example `--device cpu` or `--device cuda:1`.
 
 The two steps can use different devices, because step 3 writes the features to files, and step 4 reads them from these files.
 
@@ -51,6 +51,8 @@ git clone https://github.com/BerkIGuler/ChaSE.git
 cd ChaSE
 pip install -e .            # add [test], as in pip install -e ".[test]", to also install pytest for the tests in tests/
 ```
+
+This also installs the four commands of ChaSE, `chase-make-partition`, `chase-build-data`, `chase-run` and `chase-report`. Each one prints its arguments with `--help`.
 
 ## Usage
 
@@ -68,7 +70,7 @@ We generate our data with [CSIGen](https://github.com/BerkIGuler/CSIGen), our op
 *Partition the links.* The first command splits the links of your runs into train, val and test.
 
 ```bash
-python scripts/make_partition.py configs/my_split.yaml runs/city_a runs/city_b partition/my_cell
+chase-make-partition configs/my_split.yaml runs/city_a runs/city_b partition/my_cell
 ```
 
 - `configs/my_split.yaml` is your split config. Copy `configs/split_example.yaml`, which explains each setting, and give the held-out site of each of your runs. Sites are counted from 0. Site s holds the files `channel_tx_<i>.npz` with i // num_sectors = s, so with 6 sectors per site, site 1 holds the files 6 to 11.
@@ -80,7 +82,7 @@ The command splits the links as in the paper. In each run, it holds out one base
 *Build the sets.* The second command writes the six files of the cell.
 
 ```bash
-python scripts/build_data.py runs partition/my_cell data/my_cell
+chase-build-data runs partition/my_cell data/my_cell
 ```
 
 - `runs` is the folder that holds the runs of the partition.
@@ -89,7 +91,7 @@ python scripts/build_data.py runs partition/my_cell data/my_cell
 
 The command rebuilds the channels from the paths that CSIGen saved, bit for bit as CSIGen computed them. It needs only numpy and the CPU, at about 10 to 20 seconds per file. It keeps the train, val and test links that go to the site of their own user, and it writes their channels and labels. It also writes a `manifest.yaml` with the mean power for the raw baselines and the layout of the base-station and user arrays (rows, columns, polarizations, spacing and the order of the antenna index). An encode function can use this layout for its readouts. The mean power is the mean of |h|^2 over all train links, as in the paper, unless the partition already gives one. The command stops if the output folder already has a complete build.
 
-**2. Set up the config.** Copy `configs/example.yaml`, for example to `configs/my_eval.yaml`, and set the data, the folders and the models. The keys that you leave out take their defaults. The split config of step 1 is a separate file, which only `scripts/make_partition.py` reads.
+**2. Set up the config.** Copy `configs/example.yaml`, for example to `configs/my_eval.yaml`, and set the data, the folders and the models. The keys that you leave out take their defaults. The split config of step 1 is a separate file, which only `chase-make-partition` reads.
 
 ```yaml
 data_dir: data/my_cell                   # the channels and labels of step 1 (<set>.npy, <set>_labels.npz)
@@ -132,8 +134,8 @@ extract(encode, cfg, "my_model", snr_db=10)      # AWGN at 10 dB added first, to
 **4. Probe.** This step trains and scores all probes for every model, readout and quantity of the config, and writes one result file per model and readout.
 
 ```bash
-python scripts/run_chase.py configs/my_eval.yaml                # every model and readout
-python scripts/run_chase.py configs/my_eval.yaml --snr-db 10    # the features at 10 dB
+chase-run configs/my_eval.yaml                # every model and readout
+chase-run configs/my_eval.yaml --snr-db 10    # the features at 10 dB
 ```
 
 With `--snr-db`, the run reads the features from `<features_dir>/snr<X>`, adds the same noise to the raw baselines, and writes the results to `<out_dir>/snr<X>`, where X is the SNR in dB. It stops if `chase.extract` wrote the features at another SNR. A stopped run resumes. It skips the quantities that a result of the same settings and features already holds.
@@ -141,7 +143,7 @@ With `--snr-db`, the run reads the features from `<features_dir>/snr<X>`, adds t
 **5. Report.** This step chooses the readout and the probe of each quantity on the validation links, computes the shares and their 95% intervals, and writes `report.json` and `report.md`.
 
 ```bash
-python scripts/chase_report.py configs/my_eval.yaml [--snr-db 10]
+chase-report configs/my_eval.yaml [--snr-db 10]
 ```
 
 ### Outputs
@@ -165,11 +167,11 @@ Since the user has one antenna, the channels do not show the angles at the user,
 
 **Models.** The paper evaluates six published WCFMs (PilotWiMAE, LWM, LWM-Temporal, WiMamba, WiMAE and ContraWiMAE). All six are pretrained on the same urban channels. The paper evaluates them on clean and noisy channels, and on the urban, suburban and rural test cells. It also evaluates PilotWiMAE pretrained on data sets that differ in one property at a time. The paper gives the results.
 
-**Get the data.** The data of the demonstration are on Hugging Face at [BerkIGuler/ChaSEDatasets](https://huggingface.co/datasets/BerkIGuler/ChaSEDatasets) (5.6 GB). They hold the ray-traced paths of the eight scenes and one partition each for the urban, suburban and rural test cells. The partitions are included, so you skip the first command of step 1 (`scripts/make_partition.py`) and run only the second one, `scripts/build_data.py`. The partitions also hold the mean power of the paper, so the built cells give the raw baselines of the paper. Download the data with the `hf` command of `huggingface_hub` (`pip install huggingface_hub`), and build the sets of a cell.
+**Get the data.** The data of the demonstration are on Hugging Face at [BerkIGuler/ChaSEDatasets](https://huggingface.co/datasets/BerkIGuler/ChaSEDatasets) (5.6 GB). They hold the ray-traced paths of the eight scenes and one partition each for the urban, suburban and rural test cells. The partitions are included, so you skip the first command of step 1 (`chase-make-partition`) and run only the second one, `chase-build-data`. The partitions also hold the mean power of the paper, so the built cells give the raw baselines of the paper. Download the data with the `hf` command of `huggingface_hub` (`pip install huggingface_hub`), and build the sets of a cell.
 
 ```bash
 hf download BerkIGuler/ChaSEDatasets --repo-type dataset --local-dir chase_data
-python scripts/build_data.py chase_data/runs/urban chase_data/partitions/urban data/urban
+chase-build-data chase_data/runs/urban chase_data/partitions/urban data/urban
 ```
 
 For the suburban and rural cells, replace `urban` with `suburban` or `rural`. The builder rebuilds the channels from the paths. It needs only numpy and the CPU, at about 10 to 20 seconds per file. The built urban, suburban and rural sets take about 17 GB, 5.4 GB and 8.2 GB.
@@ -180,8 +182,8 @@ For the suburban and rural cells, replace `urban` with `suburban` or `rural`. Th
 
 | Path | Contents |
 |---|---|
-| `chase/` | The Python package (quantities, probes, raw baselines, bootstrap, run, report, feature extraction, partition, data builder) |
-| `scripts/` | Command-line entry points |
+| `chase/` | The Python package (quantities, probes, raw baselines, bootstrap, run, report, feature extraction, partition, data builder) and its commands (`chase/cli.py`) |
+| `scripts/` | `extract_dummy.py`, an example of an encode function |
 | `configs/` | The example config and the example split config |
 | `tests/` | Tests (`pytest`) |
 | `docs/` | `data_format.md` (the format of the data) and `changelog.md` |

@@ -153,7 +153,7 @@ def channel_stats(data_dir: Path) -> dict:
 
 def data_power(data_dir: Path):
     """(mean power, source) for the raw baselines when the config does not set it. It is statistics.mean_power of the
-    manifest.yaml in data_dir (scripts/build_data.py copies it from the partition), else the mean power of the train
+    manifest.yaml in data_dir (chase-build-data copies it from the partition), else the mean power of the train
     channels."""
     m = Path(data_dir) / "manifest.yaml"
     stats = (yaml.safe_load(m.read_text()) or {}).get("statistics") if m.exists() else None

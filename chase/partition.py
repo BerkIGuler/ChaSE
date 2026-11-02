@@ -114,7 +114,7 @@ def make_partition(runs: List[Path], split: dict, out_dir: Path) -> dict:
     """Write partition.npz and manifest.yaml of the runs to out_dir. Returns the manifest."""
     runs, out_dir = [Path(r) for r in runs], Path(out_dir)
     if len({r.name for r in runs}) < len(runs) or len({r.resolve().parent for r in runs}) > 1:
-        raise ValueError("give each run once, all in one folder (scripts/build_data.py reads them from there)")
+        raise ValueError("give each run once, all in one folder (chase-build-data reads them from there)")
     if (out_dir / "manifest.yaml").exists():
         raise FileExistsError(f"{out_dir} has a partition already. Remove it first.")
     held = {str(k): int(v) for k, v in split["held_out_site"].items()}

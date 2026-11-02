@@ -40,7 +40,7 @@ def channel_batches(channels: np.ndarray, set_index: int, snr_db: float = None):
     channels may be a memory map."""
     if channels.ndim != 5:
         raise ValueError(f"the channels must be [n, T, U, N, K] (5 axes), not {channels.shape}. Build the sets again "
-                         "with scripts/build_data.py.")
+                         "with chase-build-data.")
     for i in range(0, len(channels), NOISE_BATCH):
         h = torch.from_numpy(np.array(channels[i:i + NOISE_BATCH]))
         if snr_db is not None:
