@@ -33,6 +33,21 @@ ANGLES = ("aod", "zod", "aoa", "zoa")                        # probed as (sin, c
 DELAY_SPREAD_FLOOR_S = 1e-9                                  # added before log10, since one path has zero spread
 
 Target = Tuple[np.ndarray, np.ndarray]
+ALWAYS_READ = ("city", "rx_position", "path_gain_db")       # the tiles and the coverage floor read these
+FIELDS: Dict[str, tuple] = {                                  # the label fields that each target reads
+    "distance": ("distance_m",), "path_gain": ("path_gain_db",), "k_factor": ("k_factor_db",),
+    "los_share": ("power_frac_los",), "diffraction_share": ("power_frac_diffraction",),
+    "specular_share": ("power_frac_specular",), "refraction_share": ("power_frac_refraction",),
+    "dominant_share": ("dominant_power_fraction",), "dominant_bounces": ("dominant_num_bounces",),
+    "delay_spread": ("delay_spread_s",), "first_delay": ("first_delay_s",),
+    "excess_delay": ("dominant_tau_s", "first_delay_s"),
+    "aod": ("dominant_phi_t", "dominant_theta_t", "tx_orientation"),
+    "zod": ("dominant_phi_t", "dominant_theta_t", "tx_orientation"), "asd": ("asd_rad",), "zsd": ("zsd_rad",),
+    "doppler": ("dominant_doppler_hz",), "abs_doppler": ("dominant_doppler_hz",),
+    "max_doppler": ("max_abs_doppler_hz",), "speed": ("rx_velocity",),
+    "aoa": ("dominant_phi_r", "dominant_theta_r", "rx_orientation"),
+    "zoa": ("dominant_phi_r", "dominant_theta_r", "rx_orientation"), "asa": ("asa_rad",), "zsa": ("zsa_rad",),
+}
 TARGETS: Dict[str, Callable[[Dict[str, np.ndarray]], Target]] = {
     "distance": lambda l: _scalar(l["distance_m"], log=True),
     "path_gain": lambda l: _scalar(l["path_gain_db"]),

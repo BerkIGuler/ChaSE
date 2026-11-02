@@ -59,7 +59,9 @@ An evaluation has five steps. One YAML config file, which you write in step 2, h
 **1. Prepare the data.** ChaSE works with channels from any simulator or data set, if you have the ground truth of each channel. ChaSE needs two files for each of the train, val and test sets.
 
 - `<set>.npy`, the channels [n, OFDM symbol, user antenna, base-station antenna, subcarrier] complex64, without noise. ChaSE adds the noise itself when you ask for an SNR (step 3).
-- `<set>_labels.npz`, the ground truth of each channel, with one array per field and one row per channel. `chase/quantities.py` lists the fields that the probe targets read, such as `delay_spread_s` and `dominant_phi_t`. The bootstrap also reads `city` and `rx_position`.
+- `<set>_labels.npz`, the ground truth of each channel, with one array per field and one row per channel.
+
+[docs/data_format.md](docs/data_format.md) describes both files exactly, with every label field that ChaSE reads, its unit and its meaning, and the conventions of the angles. Read it if you write the files from your own data.
 
 We generate our data with [CSIGen](https://github.com/BerkIGuler/CSIGen), our open-source tool built on [Sionna RT](https://github.com/NVlabs/sionna-rt). ChaSE does not need CSIGen, but ChaSE reads CSIGen runs directly. Two commands turn CSIGen runs into the two files of each set (six files in total) and a `manifest.yaml`.
 
@@ -182,7 +184,7 @@ For the suburban and rural cells, replace `urban` with `suburban` or `rural`. Th
 | `scripts/` | Command-line entry points |
 | `configs/` | The example config and the example split config |
 | `tests/` | Tests (`pytest`) |
-| `docs/` | `changelog.md` |
+| `docs/` | `data_format.md` (the format of the data) and `changelog.md` |
 
 ## Citation
 

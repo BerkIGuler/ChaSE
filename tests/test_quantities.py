@@ -2,10 +2,11 @@ import numpy as np
 
 from chase.quantities import ANGLES, GROUPS, QUANTITIES, TARGETS, local_angles, rotation
 
-FIELDS = ("distance_m", "path_gain_db", "k_factor_db", "delay_spread_s", "first_delay_s", "dominant_tau_s", "asd_rad",
-          "zsd_rad", "asa_rad", "zsa_rad", "dominant_theta_t", "dominant_phi_t", "dominant_theta_r", "dominant_phi_r",
-          "dominant_doppler_hz", "max_abs_doppler_hz", "power_frac_los", "power_frac_diffraction",
-          "power_frac_specular", "power_frac_refraction", "dominant_power_fraction", "dominant_num_bounces")
+FIELDS_1D = ("distance_m", "path_gain_db", "k_factor_db", "delay_spread_s", "first_delay_s", "dominant_tau_s",
+             "asd_rad", "zsd_rad", "asa_rad", "zsa_rad", "dominant_theta_t", "dominant_phi_t", "dominant_theta_r",
+             "dominant_phi_r",
+             "dominant_doppler_hz", "max_abs_doppler_hz", "power_frac_los", "power_frac_diffraction",
+             "power_frac_specular", "power_frac_refraction", "dominant_power_fraction", "dominant_num_bounces")
 
 
 def test_every_quantity_has_a_target():
@@ -24,7 +25,7 @@ def test_local_angles():
 
 def test_targets_handle_undefined_values():
     n = 4
-    lab = {k: np.zeros(n, np.float32) for k in FIELDS}
+    lab = {k: np.zeros(n, np.float32) for k in FIELDS_1D}
     lab.update(rx_velocity=np.zeros((n, 3), np.float32), tx_orientation=np.zeros((n, 3), np.float32),
                rx_orientation=np.zeros((n, 3), np.float32))
     lab["k_factor_db"] = np.array([3, np.nan, np.inf, 1], np.float32)
@@ -38,3 +39,21 @@ def test_targets_handle_undefined_values():
     for q in QUANTITIES:
         y, ok = TARGETS[q](lab)
         assert y.shape == (n, 2 if q in ANGLES else 1) and ok.shape == (n,)
+
+
+def test_fields_list_what_each_target_reads():
+    from chase.quantities import FIELDS
+
+    class Recorder(dict):
+        def __getitem__(self, k):
+            self.read.add(k)
+            return super().__getitem__(k)
+    n = 3
+    lab = {k: np.ones(n, np.float32) for k in FIELDS_1D}
+    lab.update(rx_velocity=np.ones((n, 3), np.float32), tx_orientation=np.zeros((n, 3), np.float32),
+               rx_orientation=np.zeros((n, 3), np.float32))
+    for q in QUANTITIES:
+        r = Recorder(lab)
+        r.read = set()
+        TARGETS[q](r)
+        assert r.read == set(FIELDS[q]), q

@@ -37,7 +37,7 @@ import yaml
 from chase.bootstrap import r2_mean, r2_pooled, tiles
 from chase.probes import LARGE, mlp_probe, ridge_probe, shuffled, standardize
 from chase.provenance import code_state, sha256, write_json
-from chase.quantities import ANGLES, QUANTITIES, TARGETS
+from chase.quantities import ALWAYS_READ, ANGLES, FIELDS, QUANTITIES, TARGETS
 from chase.raw import mean_power, raw_set
 
 SETS = ("train", "val", "test")
@@ -109,6 +109,22 @@ def run_settings(cfg: dict, snr_db: float = None) -> dict:
     return {**{k: cfg[k] for k in ("levels", "seeds", "control_seed", "controls", "val_split_seed",
                                    "min_path_gain_db")},
             "snr_db": snr_db, "labels_sha256": {s: sha256(data_dir / f"{s}_labels.npz") for s in SETS}}
+
+
+def check_labels(labels: dict, quantities: list) -> None:
+    """Stop before any probe if a set lacks a label field that the run reads, or if the positions or the cities of
+    the links are not finite (docs/data_format.md)."""
+    need = sorted({*ALWAYS_READ, *(f for q in quantities for f in FIELDS[q])})
+    for s, lab in labels.items():
+        missing = [f for f in need if f not in lab]
+        if missing:
+            raise ValueError(f"{s}_labels.npz has no {missing}. Add them, or leave out their quantities with the "
+                             "'quantities' key of the config (docs/data_format.md lists the fields).")
+        if not np.issubdtype(np.asarray(lab["city"]).dtype, np.integer):
+            raise ValueError(f"{s}_labels.npz: city must be an integer index of the scene of each link")
+        if not np.isfinite(np.asarray(lab["rx_position"], dtype=np.float64)).all():
+            raise ValueError(f"{s}_labels.npz: rx_position has NaN or inf values, so the links cannot be put into "
+                             "tiles")
 
 
 def validation_halves(val_labels: dict, seed: int) -> np.ndarray:
@@ -271,6 +287,7 @@ def run(cfg: dict, config_file: str = None, models=None, readouts=None, snr_db: 
     if unknown:
         raise ValueError(f"not models of the config: {unknown}")
     labels = load_labels(Path(cfg["data_dir"]).expanduser())
+    check_labels(labels, cfg["quantities"])
     floor = cfg["min_path_gain_db"]
     covered = {s: np.ones(len(labels[s]["path_gain_db"]), bool) if floor is None
                else labels[s]["path_gain_db"] >= floor for s in SETS}
