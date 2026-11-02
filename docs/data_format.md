@@ -1,6 +1,6 @@
 # Data format
 
-ChaSE reads the data of an evaluation from one folder, the `data_dir` of the config. This document describes the files of that folder, so that you can write them from any simulator or data set. If you use CSIGen, `scripts/build_data.py` writes them for you (step 1 of the README).
+ChaSE reads the data of an evaluation from one folder, the `data_dir` of the config. This document describes the files of that folder, so that you can write them from any simulator or data set. If you use CSIGen, `chase-build-data` writes them for you (step 1 of the README).
 
 ## Files
 
@@ -83,7 +83,7 @@ ChaSE turns the global direction of departure into the frame of the base-station
 
 ## Manifest
 
-`manifest.yaml` is optional. `scripts/build_data.py` writes it. ChaSE reads only `statistics.mean_power` from it. The other keys are for you and for your `encode` function.
+`manifest.yaml` is optional. `chase-build-data` writes it. ChaSE reads only `statistics.mean_power` from it. The other keys are for you and for your `encode` function.
 
 | Key | Meaning |
 |---|---|
@@ -92,7 +92,7 @@ ChaSE turns the global direction of departure into the frame of the base-station
 
 ## Partition
 
-`scripts/build_data.py` builds the three sets from CSIGen runs and a partition. `scripts/make_partition.py` writes the partition, so you write one yourself only for a split of your own. A partition folder holds `partition.npz`, with one entry per link of the runs.
+`chase-build-data` builds the three sets from CSIGen runs and a partition. `chase-make-partition` writes the partition, so you write one yourself only for a split of your own. A partition folder holds `partition.npz`, with one entry per link of the runs.
 
 | Array | Shape | Meaning |
 |---|---|---|

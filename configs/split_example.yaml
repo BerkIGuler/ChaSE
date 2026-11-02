@@ -1,4 +1,4 @@
-# Example split config for scripts/make_partition.py. These are the settings of the paper.
+# Example split config for chase-make-partition. These are the settings of the paper.
 name: new_cell
 num_sectors: 6                # sectors per site in the CSIGen runs
 held_out_site:                # per run (folder name), the site whose own-site links are the test set.

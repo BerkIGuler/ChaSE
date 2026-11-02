@@ -17,6 +17,12 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+chase-make-partition = "chase.cli:make_partition_main"
+chase-build-data = "chase.cli:build_data_main"
+chase-run = "chase.cli:run_main"
+chase-report = "chase.cli:report_main"
+
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
