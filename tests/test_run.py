@@ -157,3 +157,37 @@ def test_default_coverage_floor(tmp_path):
     path = tmp_path / "c.yaml"
     path.write_text(yaml.safe_dump({"data_dir": "d", "out_dir": "o", "models": {"raw": {"raw": "complex"}}}))
     assert load_config(path)["min_path_gain_db"] == -150           # the coverage floor of the paper
+
+
+def test_the_minimal_labels_of_docs_data_format(config):
+    """docs/data_format.md: city, rx_position and path_gain_db, plus the fields of the probed quantities, suffice."""
+    cfg = load_config(config)
+    data = Path(cfg["data_dir"])
+    for s in ("train", "val", "test"):
+        lab = dict(np.load(data / f"{s}_labels.npz"))
+        np.savez(data / f"{s}_labels.npz", **{k: lab[k] for k in ("city", "rx_position", "path_gain_db",
+                                                                   "distance_m", "delay_spread_s")})
+    cfg["quantities"] = ["distance", "path_gain", "delay_spread"]
+    run(cfg, device="cpu")
+    assert json.loads(write_report(cfg).read_text())["complete"]
+
+
+def test_label_checks_before_any_probe(config, monkeypatch):
+    cfg = load_config(config)
+    data = Path(cfg["data_dir"])
+    monkeypatch.setattr(R, "probe_quantity", lambda *a: (_ for _ in ()).throw(AssertionError("probed")))
+    lab = dict(np.load(data / "val_labels.npz"))
+    np.savez(data / "val_labels.npz", **{k: v for k, v in lab.items() if k != "k_factor_db"})
+    with pytest.raises(ValueError, match=r"val_labels.npz has no \['k_factor_db'\]"):
+        run(cfg, device="cpu")
+    lab["rx_position"][0, 0] = np.nan
+    np.savez(data / "val_labels.npz", **lab)
+    with pytest.raises(ValueError, match="rx_position has NaN"):
+        run(cfg, device="cpu")
+    lab["rx_position"][0, 0] = 1.0
+    np.savez(data / "val_labels.npz", **{**lab, "city": lab["city"].astype(str)})
+    with pytest.raises(ValueError, match="city must be an integer"):
+        run(cfg, device="cpu")
+    np.savez(data / "val_labels.npz", **{k: v for k, v in lab.items() if k != "path_gain_db"})
+    with pytest.raises(ValueError, match="path_gain_db"):                # read first by the coverage floor
+        run(cfg, device="cpu")
