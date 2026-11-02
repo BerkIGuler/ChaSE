@@ -25,6 +25,7 @@ chase-report = "chase.cli:report_main"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+examples = ["jupyter", "huggingface_hub>=0.25", "matplotlib"]
 
 [project.urls]
 Repository = "https://github.com/BerkIGuler/ChaSE"

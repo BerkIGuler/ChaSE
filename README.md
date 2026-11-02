@@ -54,6 +54,10 @@ pip install -e .            # add [test], as in pip install -e ".[test]", to als
 
 This also installs the four commands of ChaSE, `chase-make-partition`, `chase-build-data`, `chase-run` and `chase-report`. Each one prints its arguments with `--help`.
 
+## Quick start
+
+The notebook [examples/quickstart.ipynb](examples/quickstart.ipynb) runs all five steps of [Usage](#usage) on a small sample of the data of the paper, with a dummy model. The sample holds 10% of the users of the two rural towns. It is 25 MB to download, and its built sets take about 0.9 GB. The notebook probes 6 of the 24 quantities, with the ridge probe and one MLP of 64 units with one seed, so it runs fast. On a CPU with 24 cores, it takes under a minute. It needs Jupyter, `huggingface_hub` and `matplotlib`, which `pip install -e ".[examples]"` installs. Start with it to see each step and its output, then replace the dummy model with your own.
+
 ## Usage
 
 An evaluation has five steps. One YAML config file, which you write in step 2, holds all settings of the evaluation. Steps 3, 4 and 5 read it. `configs/example.yaml` is a template for this file. It shows every key with its default, and these defaults are the settings of the paper.
@@ -129,7 +133,7 @@ extract(encode, cfg, "my_model")                 # clean channels, to <features_
 extract(encode, cfg, "my_model", snr_db=10)      # AWGN at 10 dB added first, to <features_dir>/snr10/my_model/<readout>/
 ```
 
-`scripts/extract_dummy.py` is a complete example with a dummy encoder. The noise that `extract` adds to a channel depends only on the set and the index of the channel. Thus, every model and the raw baselines of step 4 see exactly the same noisy channels.
+`examples/extract_dummy.py` is a complete example with a dummy encoder. The noise that `extract` adds to a channel depends only on the set and the index of the channel. Thus, every model and the raw baselines of step 4 see exactly the same noisy channels.
 
 **4. Probe.** This step trains and scores all probes for every model, readout and quantity of the config, and writes one result file per model and readout.
 
@@ -183,7 +187,7 @@ For the suburban and rural cells, replace `urban` with `suburban` or `rural`. Th
 | Path | Contents |
 |---|---|
 | `chase/` | The Python package (quantities, probes, raw baselines, bootstrap, run, report, feature extraction, partition, data builder) and its commands (`chase/cli.py`) |
-| `scripts/` | `extract_dummy.py`, an example of an encode function |
+| `examples/` | `quickstart.ipynb`, the quick start, with its figures in `figures/`, and `extract_dummy.py`, an example of an encode function |
 | `configs/` | The example config and the example split config |
 | `tests/` | Tests (`pytest`) |
 | `docs/` | `data_format.md` (the format of the data) and `changelog.md` |

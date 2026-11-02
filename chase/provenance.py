@@ -39,5 +39,5 @@ def code_state() -> dict:
     ours = top is not None and Path(top).resolve() == REPO_DIR
     state = {"version": chase.__version__, "commit": _git("rev-parse", "HEAD") if ours else None}
     if state["commit"] is not None:
-        state["dirty"] = bool(_git("status", "--porcelain", "--", "chase", "scripts"))
+        state["dirty"] = bool(_git("status", "--porcelain", "--", "chase"))
     return state

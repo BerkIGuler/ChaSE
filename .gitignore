@@ -13,6 +13,7 @@ dist/
 *.pt
 *.h5
 output/
+quickstart_work/
 
 # Internal notes and agent rules
 CLAUDE.md

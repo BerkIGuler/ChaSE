@@ -12,7 +12,7 @@ models:
   raw_logmag: {raw: logmag}           # log10 |h|^2 of the first OFDM symbol
   raw_t: {raw: complex_t}             # all OFDM symbols, every 4th subcarrier
   raw_logmag_t: {raw: logmag_t}
-  # A model with its readouts, read from features_dir. scripts/extract_dummy.py writes the features of this one.
+  # A model with its readouts, read from features_dir. examples/extract_dummy.py writes the features of this one.
   dummy: {readouts: [mean, spatial]}
 
 min_path_gain_db: -150                # coverage floor (dB) of the paper, null keeps every link
