@@ -191,6 +191,7 @@ For the suburban and rural cells, replace `urban` with `suburban` or `rural`. Th
 | `configs/` | The example config and the example split config |
 | `tests/` | Tests (`pytest`) |
 | `docs/` | `data_format.md` (the format of the data) and `changelog.md` |
+| `AGENTS.md` | Pointers and conventions for people and coding agents that use ChaSE or contribute to it |
 
 ## Citation
 
